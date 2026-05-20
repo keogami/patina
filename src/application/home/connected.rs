@@ -44,7 +44,10 @@ pub enum ConnectionData {
         autoconnect: bool,
         metered: bool,
         uptime: Duration,
+        // TODO: remove directive once they are used in the ui
+        #[allow(unused)]
         rx_bytes: u64,
+        #[allow(unused)]
         tx_bytes: u64,
         signal_history: CircularBuffer<48, u8>,
         rx_throughput: CircularBuffer<48, usize>,
@@ -63,7 +66,9 @@ pub enum ConnectionData {
         link_speed: CowStr,
         autoconnect: bool,
         uptime: Duration,
+        #[allow(unused)]
         rx_bytes: u64,
+        #[allow(unused)]
         tx_bytes: u64,
         rx_throughput: CircularBuffer<48, usize>,
         tx_throughput: CircularBuffer<48, usize>,

@@ -612,12 +612,12 @@ impl Component for HomeData {
                         if key_event.code.is_char('i') =>
                     {
                         let target = match self.selected {
-                            Selected::Connected(idx) => Some(InfoTarget::Connection(
-                                self.connected.list[idx].clone(),
-                            )),
-                            Selected::Available(idx) => Some(InfoTarget::Available(
-                                self.available.list[idx].clone(),
-                            )),
+                            Selected::Connected(idx) => {
+                                Some(InfoTarget::Connection(self.connected.list[idx].clone()))
+                            }
+                            Selected::Available(idx) => {
+                                Some(InfoTarget::Available(self.available.list[idx].clone()))
+                            }
                             Selected::None => None,
                         };
                         if let Some(target) = target {

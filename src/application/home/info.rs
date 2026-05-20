@@ -156,19 +156,16 @@ impl Info {
     fn status_line(&self) -> Line<'static> {
         match &self.target {
             InfoTarget::Connection(c) => match c.as_ref() {
-                ConnectionData::WifiActive { .. } | ConnectionData::WiredActive { .. } => line![
-                    span!(PATINA.live; "● "),
-                    span!(PATINA.live; "connected"),
-                ],
-                ConnectionData::WifiInactive { .. } => line![
-                    span!(PATINA.fg_alt; "○ "),
-                    span!(PATINA.fg_alt; "saved"),
-                ],
+                ConnectionData::WifiActive { .. } | ConnectionData::WiredActive { .. } => {
+                    line![span!(PATINA.live; "● "), span!(PATINA.live; "connected"),]
+                }
+                ConnectionData::WifiInactive { .. } => {
+                    line![span!(PATINA.fg_alt; "○ "), span!(PATINA.fg_alt; "saved"),]
+                }
             },
-            InfoTarget::Available(_) => line![
-                span!(PATINA.fg_alt; "○ "),
-                span!(PATINA.fg_alt; "visible"),
-            ],
+            InfoTarget::Available(_) => {
+                line![span!(PATINA.fg_alt; "○ "), span!(PATINA.fg_alt; "visible"),]
+            }
         }
     }
 
@@ -183,7 +180,9 @@ impl Info {
                     ..
                 } => active_subtitle(*uptime, *autoconnect, *metered),
                 ConnectionData::WiredActive {
-                    uptime, autoconnect, ..
+                    uptime,
+                    autoconnect,
+                    ..
                 } => active_subtitle(*uptime, *autoconnect, false),
                 ConnectionData::WifiInactive {
                     last_used,
@@ -267,10 +266,7 @@ impl Info {
                         section_header("radio"),
                         kv("security", security.clone()),
                         kv("bssid", bssid.clone()),
-                        kv(
-                            "band",
-                            format!("{}  ·  ch {}", frequency, channel).into(),
-                        ),
+                        kv("band", format!("{}  ·  ch {}", frequency, channel).into()),
                         kv("link speed", link_speed.clone()),
                     ]),
                     Section::Signal(signal_history),
@@ -295,10 +291,7 @@ impl Info {
                         kv("dns", join_dns(dns)),
                         kv("mtu", mtu.to_string().into()),
                         kv("mac", mac.clone()),
-                        kv(
-                            "iface",
-                            format!("{}  ·  {}", interface, link_speed).into(),
-                        ),
+                        kv("iface", format!("{}  ·  {}", interface, link_speed).into()),
                     ]),
                     Section::Throughput(rx_throughput, tx_throughput),
                 ],
@@ -314,10 +307,7 @@ impl Info {
                     Section::Lines(vec![
                         section_header("security"),
                         kv("method", security.clone()),
-                        kv(
-                            "bssid",
-                            bssid.clone().unwrap_or_else(|| "—".into()),
-                        ),
+                        kv("bssid", bssid.clone().unwrap_or_else(|| "—".into())),
                     ]),
                     Section::Lines(vec![
                         section_header("saved settings"),
@@ -325,12 +315,13 @@ impl Info {
                         kv("dns", join_dns(saved_dns)),
                         kv(
                             "autoconnect",
-                            if *autoconnect { "on".into() } else { "off".into() },
+                            if *autoconnect {
+                                "on".into()
+                            } else {
+                                "off".into()
+                            },
                         ),
-                        kv(
-                            "metered",
-                            if *metered { "yes".into() } else { "no".into() },
-                        ),
+                        kv("metered", if *metered { "yes".into() } else { "no".into() }),
                     ]),
                 ],
             },
@@ -347,7 +338,11 @@ impl Info {
                     kv("link speed", ap.link_speed.clone()),
                     kv(
                         "profile",
-                        if ap.saved { "saved".into() } else { "new".into() },
+                        if ap.saved {
+                            "saved".into()
+                        } else {
+                            "new".into()
+                        },
                     ),
                 ]),
                 Section::Signal(&ap.signal_history),
@@ -500,7 +495,11 @@ fn render_lines(frame: &mut Frame<'_>, area: Rect, lines: Vec<Line<'_>>) {
         width: area.width,
         height: count,
     });
-    for (line, rect) in lines.into_iter().take(count as usize).zip(rects.iter().cloned()) {
+    for (line, rect) in lines
+        .into_iter()
+        .take(count as usize)
+        .zip(rects.iter().cloned())
+    {
         line.render(rect, frame.buffer_mut());
     }
 }
@@ -556,16 +555,10 @@ fn render_throughput_sparklines(
     let [dn_label, dn_spark, _, dn_stats] =
         Layout::vertical(constraints![== 1, == 2, == 1, == 1]).areas(right);
 
-    line![
-        span!(PATINA.accent; "▲ "),
-        span!(PATINA.dim; "upload"),
-    ]
-    .render(up_label, frame.buffer_mut());
-    line![
-        span!(PATINA.live; "▼ "),
-        span!(PATINA.dim; "download"),
-    ]
-    .render(dn_label, frame.buffer_mut());
+    line![span!(PATINA.accent; "▲ "), span!(PATINA.dim; "upload"),]
+        .render(up_label, frame.buffer_mut());
+    line![span!(PATINA.live; "▼ "), span!(PATINA.dim; "download"),]
+        .render(dn_label, frame.buffer_mut());
 
     let tx_data: Vec<usize> = tx.iter().copied().collect();
     let rx_data: Vec<usize> = rx.iter().copied().collect();
@@ -578,10 +571,7 @@ fn render_throughput_sparklines(
         .render(dn_spark, frame.buffer_mut());
 
     let stat_line = |peak: usize, color: Color| -> Line<'static> {
-        line![
-            span!(PATINA.dim; "peak "),
-            span!(color; "{} KiB/s", peak),
-        ]
+        line![span!(PATINA.dim; "peak "), span!(color; "{} KiB/s", peak),]
     };
     let tx_peak = tx_data.iter().copied().max().unwrap_or(0);
     let rx_peak = rx_data.iter().copied().max().unwrap_or(0);
