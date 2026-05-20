@@ -12,8 +12,8 @@ use ratatui::{
 use crate::application::{
     theme::PATINA,
     utils::{
-        BrailleSparkline, CowStr, Separator, WidgetList, humanize_duration, selected_scroll,
-        strength_bars,
+        BrailleSparkline, CowStr, ScrollState, Separator, WidgetList, humanize_duration,
+        selected_scroll_with_direction, strength_bars,
     },
 };
 
@@ -55,6 +55,7 @@ pub struct ConnectedList<'a> {
     pub items: &'a [ConnectionData],
     pub selected: Option<usize>,
     pub max_items: usize,
+    pub scroll_state: ScrollState,
 }
 
 impl Widget for ConnectedList<'_> {
@@ -62,7 +63,12 @@ impl Widget for ConnectedList<'_> {
     where
         Self: Sized,
     {
-        let range = selected_scroll(self.items.len(), self.max_items, self.selected);
+        let (range, _) = selected_scroll_with_direction(
+            self.items.len(),
+            self.max_items,
+            self.selected,
+            self.scroll_state,
+        );
         let start = range.start;
         let len = range.len();
         let items = self.items[range]

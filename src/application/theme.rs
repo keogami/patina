@@ -1,5 +1,6 @@
 use ratatui::style::Color;
 
+#[allow(dead_code)]
 pub struct Theme {
     pub bg: Color,
     pub bg_alt: Color,

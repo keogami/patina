@@ -7,6 +7,9 @@ use crate::application::{Application, Context as AppContext};
 
 mod application;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(clap::Parser)]
 struct Args {
     #[arg(short = 'l', long = "log-file")]

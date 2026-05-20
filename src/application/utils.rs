@@ -9,28 +9,78 @@ use ratatui::{
 
 use crate::application::theme::PATINA;
 
-// TODO: Currently scrolling is stateless, so it doesn't differentiate between
-// the user scrolling up or down. this means the selection stays at the bottom
-// even if the user is scrolling.
-//
-// To resolve this, we need additional book keeping on the "last scroll
-// direction", and using that to switch the scrolling algo.
+/// Tracks scrolling state for viewport continuity.
+#[derive(Debug, Clone, Copy)]
+pub struct ScrollState {
+    /// The last selected index before the current selection
+    pub last_selected: Option<usize>,
+    /// The first index currently visible in the viewport
+    pub window_start: usize,
+}
 
-/// Given a number of items, max number of items which can be shown, and a possibly selected index:
-/// returns the range of items that must be rendered
-pub fn selected_scroll(items: usize, max_items: usize, selected: Option<usize>) -> Range<usize> {
-    let Some(selected) = selected else {
-        let min = max_items.min(items);
-        return 0..min;
-    };
+impl ScrollState {
+    /// Create a new, uninitialized scroll state
+    pub fn new() -> Self {
+        Self {
+            last_selected: None,
+            window_start: 0,
+        }
+    }
+}
 
-    if items <= max_items || selected < max_items {
-        return 0..items.min(max_items);
+impl Default for ScrollState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub fn selected_scroll_with_direction(
+    items: usize,
+    max_items: usize,
+    selected: Option<usize>,
+    state: ScrollState,
+) -> (Range<usize>, ScrollState) {
+    let mut new_state = state;
+    new_state.last_selected = selected;
+
+    let (range, start) =
+        selected_scroll_with_anchor(items, max_items, selected, state.window_start);
+    new_state.window_start = start;
+
+    (range, new_state)
+}
+
+pub(crate) fn selected_scroll_with_anchor(
+    items: usize,
+    max_items: usize,
+    selected: Option<usize>,
+    window_start: usize,
+) -> (Range<usize>, usize) {
+    if max_items == 0 {
+        return (0..0, 0);
     }
 
-    let end = selected + 1;
-    let start = end - max_items;
-    start..end
+    if items <= max_items {
+        return (0..items, 0);
+    }
+
+    let Some(selected) = selected else {
+        return (0..max_items.min(items), 0);
+    };
+
+    let max_start = items - max_items;
+    let mut start = window_start.min(max_start);
+    let end = start + max_items;
+
+    // Keep the selected row visible while preserving viewport continuity.
+    if selected < start {
+        start = selected;
+    } else if selected >= end {
+        start = selected + 1 - max_items;
+    }
+
+    start = start.min(max_start);
+    (start..(start + max_items), start)
 }
 
 pub type CowStr = Cow<'static, str>;
@@ -87,7 +137,7 @@ impl<'a> BrailleSparkline<'a> {
         self.style = style;
         self
     }
-
+    #[allow(dead_code)]
     pub fn max(mut self, max: usize) -> Self {
         self.max = Some(max);
         self
@@ -242,140 +292,5 @@ impl Widget for Separator {
         let text = span![self.style; text];
 
         text.render(area, buf);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::selected_scroll;
-
-    #[test]
-    fn none_both_zero() {
-        assert_eq!(selected_scroll(0, 0, None), 0..0);
-    }
-
-    #[test]
-    fn none_zero_items() {
-        assert_eq!(selected_scroll(0, 5, None), 0..0);
-    }
-
-    #[test]
-    fn none_zero_max() {
-        assert_eq!(selected_scroll(5, 0, None), 0..0);
-    }
-
-    #[test]
-    fn none_items_below_max() {
-        assert_eq!(selected_scroll(3, 5, None), 0..3);
-    }
-
-    #[test]
-    fn none_items_equal_max() {
-        assert_eq!(selected_scroll(5, 5, None), 0..5);
-    }
-
-    #[test]
-    fn none_items_above_max() {
-        assert_eq!(selected_scroll(10, 3, None), 0..3);
-    }
-
-    #[test]
-    fn some_fits_first() {
-        assert_eq!(selected_scroll(3, 5, Some(0)), 0..3);
-    }
-
-    #[test]
-    fn some_fits_last() {
-        assert_eq!(selected_scroll(3, 5, Some(2)), 0..3);
-    }
-
-    #[test]
-    fn some_exact_first() {
-        assert_eq!(selected_scroll(5, 5, Some(0)), 0..5);
-    }
-
-    #[test]
-    fn some_exact_last() {
-        assert_eq!(selected_scroll(5, 5, Some(4)), 0..5);
-    }
-
-    #[test]
-    fn some_overflow_first_window_start() {
-        assert_eq!(selected_scroll(10, 3, Some(0)), 0..3);
-    }
-
-    #[test]
-    fn some_overflow_first_window_end() {
-        assert_eq!(selected_scroll(10, 3, Some(2)), 0..3);
-    }
-
-    #[test]
-    fn some_overflow_max_one_first() {
-        assert_eq!(selected_scroll(10, 1, Some(0)), 0..1);
-    }
-
-    #[test]
-    fn some_scroll_just_past_first_window() {
-        assert_eq!(selected_scroll(10, 3, Some(3)), 1..4);
-    }
-
-    #[test]
-    fn some_scroll_middle() {
-        assert_eq!(selected_scroll(10, 3, Some(5)), 3..6);
-    }
-
-    #[test]
-    fn some_scroll_last() {
-        assert_eq!(selected_scroll(10, 3, Some(9)), 7..10);
-    }
-
-    #[test]
-    fn some_scroll_max_one_middle() {
-        assert_eq!(selected_scroll(10, 1, Some(5)), 5..6);
-    }
-
-    #[test]
-    fn some_scroll_max_one_last() {
-        assert_eq!(selected_scroll(10, 1, Some(9)), 9..10);
-    }
-
-    #[test]
-    fn some_scroll_large() {
-        assert_eq!(selected_scroll(100, 10, Some(50)), 41..51);
-    }
-
-    #[test]
-    fn edge_zero_items_with_selection() {
-        assert_eq!(selected_scroll(0, 5, Some(0)), 0..0);
-    }
-
-    #[test]
-    fn edge_all_zero_with_selection() {
-        assert_eq!(selected_scroll(0, 0, Some(0)), 0..0);
-    }
-
-    #[test]
-    fn edge_zero_max_no_selection() {
-        assert_eq!(selected_scroll(5, 0, None), 0..0);
-    }
-
-    #[test]
-    fn edge_zero_max_with_selection() {
-        assert_eq!(selected_scroll(5, 0, Some(2)), 3..3);
-    }
-
-    #[test]
-    fn edge_selected_past_end_fits() {
-        assert_eq!(selected_scroll(5, 10, Some(7)), 0..5);
-    }
-
-    #[test]
-    fn edge_selected_past_end_scroll() {
-        assert_eq!(selected_scroll(5, 3, Some(5)), 3..6);
-    }
-
-    #[test]
-    fn edge_minimal_scrolled() {
-        assert_eq!(selected_scroll(1, 1, Some(0)), 0..1);
     }
 }

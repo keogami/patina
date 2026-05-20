@@ -1,4 +1,4 @@
-use std::{thread::spawn, time::Duration};
+use std::{cell::Cell, thread::spawn, time::Duration};
 
 use circular_buffer::CircularBuffer;
 use poppingboba::{
@@ -15,14 +15,14 @@ use ratatui::{
 use crate::application::{
     component::{Available, Connected, RichContext},
     home::{
-        available::{AvailableAPDetails, AvailableList},
+        available::{AvailableAPDetails, AvailableList, ITEM_HEIGHT as AP_ITEM_HEIGHT},
         connected::{ConnectedList, ConnectionData, ITEM_HEIGHT},
     },
     theme::PATINA,
     utils::{
         CowStr,
         Either::{Left, Right},
-        Separator, WidgetList,
+        ScrollState, Separator, WidgetList, selected_scroll_with_direction,
     },
 };
 
@@ -36,6 +36,15 @@ pub struct HomeData {
     connected: Connected,
     available: Available,
     selected: Selected,
+    connected_scroll_state: ScrollState,
+    available_scroll_state: ScrollState,
+    available_max_items: Cell<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PaneType {
+    Connected,
+    Available,
 }
 
 struct ConnectionsHeader {
@@ -399,21 +408,97 @@ impl HomeData {
             connected,
             available,
             selected,
+            connected_scroll_state: ScrollState::new(),
+            available_scroll_state: ScrollState::new(),
+            available_max_items: Cell::new(ctx.connection_maxitem),
         }
+    }
+
+    fn sync_scroll_states(&mut self, connected_max_items: usize) {
+        match self.selected {
+            Selected::Connected(_) => {
+                let (_, connected_state) = selected_scroll_with_direction(
+                    self.connected.list.len(),
+                    connected_max_items,
+                    self.selected.connected_selected(),
+                    self.connected_scroll_state,
+                );
+                self.connected_scroll_state = connected_state;
+            }
+            Selected::Available(_) => {
+                let available_max_items = self.available_max_items.get().max(1);
+
+                let (_, available_state) = selected_scroll_with_direction(
+                    self.available.list.len(),
+                    available_max_items,
+                    self.selected.available_selected(),
+                    self.available_scroll_state,
+                );
+                self.available_scroll_state = available_state;
+            }
+            Selected::None => {}
+        }
+    }
+
+    fn handle_tab_press(&mut self, max_items: usize) {
+        let con_len = self.connected.list.len();
+        let avail_len = self.available.list.len();
+
+        // Get current pane before switch
+        let current_pane = if self.selected.connected_selected().is_some() {
+            Some(PaneType::Connected)
+        } else if self.selected.available_selected().is_some() {
+            Some(PaneType::Available)
+        } else {
+            None
+        };
+
+        // Perform the tab switch
+        self.selected = self.selected.tab(con_len, avail_len);
+
+        // Get new pane after switch
+        let new_pane = if self.selected.connected_selected().is_some() {
+            Some(PaneType::Connected)
+        } else if self.selected.available_selected().is_some() {
+            Some(PaneType::Available)
+        } else {
+            None
+        };
+
+        // If we switched panes, reset the scroll state of the new pane
+        if current_pane != new_pane {
+            match new_pane {
+                Some(PaneType::Connected) => {
+                    self.connected_scroll_state = ScrollState::new();
+                }
+                Some(PaneType::Available) => {
+                    self.available_scroll_state = ScrollState::new();
+                }
+                None => {}
+            }
+        }
+
+        self.sync_scroll_states(max_items);
     }
 }
 
 impl Component for HomeData {
-    fn update(&mut self, _ctx: &RichContext, ev: Message) {
+    fn update(&mut self, ctx: &RichContext, ev: Message) {
         match ev {
             Message::Crossterm(ev) => {
                 match ev {
+                    ratatui::crossterm::event::Event::Key(key_event)
+                        if key_event.kind != ratatui::crossterm::event::KeyEventKind::Press =>
+                    {
+                        // Ignore key release/repeat events to avoid double-processing.
+                    }
                     ratatui::crossterm::event::Event::Key(key_event)
                         if key_event.code.is_char('j') =>
                     {
                         let con_len = self.connected.list.len();
                         let avail_len = self.available.list.len();
                         self.selected = self.selected.down(con_len, avail_len);
+                        self.sync_scroll_states(ctx.connection_maxitem);
                     }
                     ratatui::crossterm::event::Event::Key(key_event)
                         if key_event.code.is_char('k') =>
@@ -421,11 +506,10 @@ impl Component for HomeData {
                         let con_len = self.connected.list.len();
                         let avail_len = self.available.list.len();
                         self.selected = self.selected.up(con_len, avail_len);
+                        self.sync_scroll_states(ctx.connection_maxitem);
                     }
                     ratatui::crossterm::event::Event::Key(key_event) if key_event.code.is_tab() => {
-                        let con_len = self.connected.list.len();
-                        let avail_len = self.available.list.len();
-                        self.selected = self.selected.tab(con_len, avail_len);
+                        self.handle_tab_press(ctx.connection_maxitem);
                     }
                     _ => {
                         // noop
@@ -499,6 +583,7 @@ impl Component for HomeData {
                     selected: self.selected.connected_selected(),
                     // TODO: load from app context
                     max_items: 5,
+                    scroll_state: self.connected_scroll_state,
                 }),
                 // TODO: load from AppContext
                 constraint!(== connected.list.len().min(5) as u16 * ITEM_HEIGHT),
@@ -529,6 +614,7 @@ impl Component for HomeData {
                 Left(AvailableList {
                     items: &available.list,
                     selected: self.selected.available_selected(),
+                    scroll_state: self.available_scroll_state,
                 }),
                 constraint!(*= 1),
             )
@@ -569,6 +655,11 @@ impl Component for HomeData {
             constraint!(== 1),
         ])
         .areas(frame.area());
+
+        // Persist the currently visible AP viewport size so key handling uses
+        // the same window size as rendering on the next update.
+        let ap_max = a_area.height.div_euclid(AP_ITEM_HEIGHT) as usize;
+        self.available_max_items.set(ap_max.max(1));
 
         frame.render_widget(&header_widget, header_area);
         frame.render_widget(header_sep_widget, hs_area);
