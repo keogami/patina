@@ -561,11 +561,9 @@ impl Component for HomeData {
                 self.authenticate = None;
             }
             Message::Authenticate(authentication_data) => {
-                self.authenticate = Some(authenticate::Authenticate {
-                    access_point: authentication_data.access_point,
-                    password: "".into(),
-                    autoconnect: true,
-                });
+                self.authenticate = Some(authenticate::Authenticate::new(
+                    authentication_data.access_point,
+                ));
             }
         }
 

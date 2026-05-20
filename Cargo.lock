@@ -1079,6 +1079,7 @@ dependencies = [
  "poppingboba",
  "ratatui",
  "timeago",
+ "tiny-str",
  "tui-overlay",
 ]
 
@@ -1780,6 +1781,21 @@ dependencies = [
  "chrono",
  "isolang",
 ]
+
+[[package]]
+name = "tiny-str"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9f362cb43a518a46851c822e3c8d12e4feeadbaad97543b64497c1dd98bc4c0"
+dependencies = [
+ "tiny-vec",
+]
+
+[[package]]
+name = "tiny-vec"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "465456ec602607b4293765935e48a5482363bac7f236a860cb25f032356e5e8e"
 
 [[package]]
 name = "tui-overlay"
