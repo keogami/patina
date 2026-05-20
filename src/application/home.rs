@@ -41,15 +41,6 @@ pub struct HomeData {
     available_scroll_state: ScrollState,
     available_max_items: Cell<usize>,
     authenticate: Option<authenticate::Authenticate>,
-    connected_scroll_state: ScrollState,
-    available_scroll_state: ScrollState,
-    available_max_items: Cell<usize>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PaneType {
-    Connected,
-    Available,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -425,9 +416,6 @@ impl HomeData {
             available_scroll_state: ScrollState::new(),
             available_max_items: Cell::new(ctx.connection_maxitem),
             authenticate: None,
-            connected_scroll_state: ScrollState::new(),
-            available_scroll_state: ScrollState::new(),
-            available_max_items: Cell::new(ctx.connection_maxitem),
         }
     }
 
