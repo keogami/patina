@@ -1079,6 +1079,7 @@ dependencies = [
  "poppingboba",
  "ratatui",
  "timeago",
+ "tui-overlay",
 ]
 
 [[package]]
@@ -1778,6 +1779,16 @@ checksum = "e86660b0935ca5912eb155f5b3794e2f8f1a09d8c00c9efd5c1075ca26403638"
 dependencies = [
  "chrono",
  "isolang",
+]
+
+[[package]]
+name = "tui-overlay"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "161772deae553f1c92bfd89f3a612a7b628a0b1cc0140720232c5bd9789474eb"
+dependencies = [
+ "ratatui-core",
+ "ratatui-widgets",
 ]
 
 [[package]]

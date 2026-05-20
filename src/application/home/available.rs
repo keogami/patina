@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use ratatui::{
     layout::Layout,
     macros::{constraint, constraints, line, span},
@@ -27,7 +29,7 @@ pub struct AvailableAPDetails {
 }
 
 pub struct AvailableList<'a> {
-    pub items: &'a [AvailableAPDetails],
+    pub items: &'a [Arc<AvailableAPDetails>],
     pub selected: Option<usize>,
     pub scroll_state: ScrollState,
 }

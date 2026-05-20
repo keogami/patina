@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use circular_buffer::CircularBuffer;
 use ratatui::{
@@ -52,7 +52,7 @@ pub enum ConnectionData {
 }
 
 pub struct ConnectedList<'a> {
-    pub items: &'a [ConnectionData],
+    pub items: &'a [Arc<ConnectionData>],
     pub selected: Option<usize>,
     pub max_items: usize,
     pub scroll_state: ScrollState,

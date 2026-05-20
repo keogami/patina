@@ -1,4 +1,4 @@
-use std::{cell::Cell, thread::spawn, time::Duration};
+use std::{cell::Cell, sync::Arc, thread::spawn, time::Duration};
 
 use circular_buffer::CircularBuffer;
 use poppingboba::{
@@ -7,13 +7,13 @@ use poppingboba::{
 };
 use ratatui::{
     layout::Layout,
-    macros::{constraint, constraints, line, span, text},
+    macros::{constraint, constraints, line, span, text, vertical},
     style::Color,
     widgets::Widget,
 };
 
 use crate::application::{
-    component::{Available, Connected, RichContext},
+    component::{Available, Bubble, Connected, RichContext},
     home::{
         available::{AvailableAPDetails, AvailableList, ITEM_HEIGHT as AP_ITEM_HEIGHT},
         connected::{ConnectedList, ConnectionData, ITEM_HEIGHT},
@@ -26,6 +26,7 @@ use crate::application::{
     },
 };
 
+pub mod authenticate;
 pub mod available;
 pub mod connected;
 
@@ -39,6 +40,7 @@ pub struct HomeData {
     connected_scroll_state: ScrollState,
     available_scroll_state: ScrollState,
     available_max_items: Cell<usize>,
+    authenticate: Option<authenticate::Authenticate>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -353,6 +355,7 @@ impl HomeData {
                 .into_iter()
                 .cycle()
                 .take(24)
+                .map(Arc::new)
                 .collect();
 
                 let conns: Vec<_> = [
@@ -393,6 +396,7 @@ impl HomeData {
                 .into_iter()
                 .cycle()
                 .take(12)
+                .map(Arc::new)
                 .collect();
 
                 let available = Available { list: available };
@@ -411,6 +415,7 @@ impl HomeData {
             connected_scroll_state: ScrollState::new(),
             available_scroll_state: ScrollState::new(),
             available_max_items: Cell::new(ctx.connection_maxitem),
+            authenticate: None,
         }
     }
 
@@ -482,8 +487,21 @@ impl HomeData {
     }
 }
 
+/// Checks whether an AP requires authentication before we can connect
+fn needs_authentication(_access_point: &AvailableAPDetails) -> anyhow::Result<bool> {
+    Ok(true)
+}
+
 impl Component for HomeData {
-    fn update(&mut self, ctx: &RichContext, ev: Message) {
+    fn update(&mut self, ctx: &RichContext, mut ev: Message) -> Bubble {
+        if let Some(ref mut auth) = self.authenticate {
+            let bubble = auth.update(ctx, ev);
+            match bubble {
+                Bubble::Yes(message) => ev = message,
+                Bubble::No => return Bubble::No,
+            }
+        }
+
         match ev {
             Message::Crossterm(ev) => {
                 match ev {
@@ -511,6 +529,21 @@ impl Component for HomeData {
                     ratatui::crossterm::event::Event::Key(key_event) if key_event.code.is_tab() => {
                         self.handle_tab_press(ctx.connection_maxitem);
                     }
+                    ratatui::crossterm::event::Event::Key(key_event)
+                        if key_event.code.is_enter() =>
+                    {
+                        if let Some(s) = self.selected.available_selected()
+                            && needs_authentication(&self.available.list[s]).is_ok_and(|n| n)
+                        {
+                            ctx.message
+                                .send(Message::Authenticate(
+                                    super::component::AuthenticationData {
+                                        access_point: self.available.list[s].clone(),
+                                    },
+                                ))
+                                .unwrap();
+                        }
+                    }
                     _ => {
                         // noop
                     }
@@ -524,10 +557,22 @@ impl Component for HomeData {
             Message::LoadConnected(connected) => self.connected = connected,
             Message::LoadAvailable(available) => self.available = available,
             Message::FinishLoading => self.loading = None,
+            Message::FinishAuthentication => {
+                self.authenticate = None;
+            }
+            Message::Authenticate(authentication_data) => {
+                self.authenticate = Some(authenticate::Authenticate {
+                    access_point: authentication_data.access_point,
+                    password: "".into(),
+                    autoconnect: true,
+                });
+            }
         }
+
+        Bubble::No
     }
 
-    fn draw(&self, _ctx: &RichContext, frame: &mut ratatui::Frame<'_>) {
+    fn draw(&mut self, ctx: &RichContext, frame: &mut ratatui::Frame<'_>) {
         let spinner = &self.loading;
         if let Some(spinner) = spinner.as_ref() {
             let text = " Loading patina";
@@ -637,24 +682,21 @@ impl Component for HomeData {
             Selected::None => Help::Connected,
         };
 
-        let [
-            header_area,
-            hs_area,
-            ch_area,
-            c_area,
-            ah_area,
-            a_area,
-            h_area,
-        ] = Layout::vertical([
+        let margined = frame.area().inner(ratatui::layout::Margin {
+            horizontal: 2,
+            vertical: 1,
+        });
+
+        let [header_area, hs_area, ch_area, c_area, ah_area, a_area, _] = Layout::vertical([
             header_constraint,
             header_sep_constraint,
             connections_header_constraint,
             connected_constraint,
             access_points_header_constraint,
             available_constraint,
-            constraint!(== 1),
+            constraint!(== 2),
         ])
-        .areas(frame.area());
+        .areas(margined);
 
         // Persist the currently visible AP viewport size so key handling uses
         // the same window size as rendering on the next update.
@@ -667,6 +709,13 @@ impl Component for HomeData {
         frame.render_widget(connected_widget, c_area);
         frame.render_widget(&access_points_header_widget, ah_area);
         frame.render_widget(available_widget, a_area);
+
+        let [_, h_area] = vertical![*= 1, == 1].areas(frame.area());
+
         frame.render_widget(help, h_area);
+
+        if let Some(ref mut auth) = self.authenticate {
+            auth.draw(ctx, frame);
+        }
     }
 }

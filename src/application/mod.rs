@@ -9,7 +9,7 @@ use ratatui::{
 };
 
 use crate::application::{
-    component::{Component, Message, RichContext},
+    component::{Bubble, Component, Message, RichContext},
     home::HomeData,
     theme::PATINA,
 };
@@ -130,7 +130,7 @@ impl Application {
         self.pane.update(&self.context, ev);
     }
 
-    pub fn draw(&self, frame: &mut Frame<'_>) {
+    pub fn draw(&mut self, frame: &mut Frame<'_>) {
         self.pane.draw(&self.context, frame);
     }
 }

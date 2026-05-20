@@ -26,11 +26,15 @@ pub struct RichContext {
 }
 
 pub struct Connected {
-    pub list: Vec<ConnectionData>,
+    pub list: Vec<Arc<ConnectionData>>,
 }
 
 pub struct Available {
-    pub list: Vec<AvailableAPDetails>,
+    pub list: Vec<Arc<AvailableAPDetails>>,
+}
+
+pub struct AuthenticationData {
+    pub access_point: Arc<AvailableAPDetails>,
 }
 
 pub enum Message {
@@ -41,10 +45,17 @@ pub enum Message {
     LoadConnected(Connected),
     LoadAvailable(Available),
     FinishLoading,
+    FinishAuthentication,
+    Authenticate(AuthenticationData),
+}
+
+pub enum Bubble {
+    Yes(Message),
+    No,
 }
 
 #[enum_dispatch]
 pub trait Component {
-    fn update(&mut self, ctx: &RichContext, ev: Message);
-    fn draw(&self, ctx: &RichContext, frame: &mut Frame<'_>);
+    fn update(&mut self, ctx: &RichContext, ev: Message) -> Bubble;
+    fn draw(&mut self, ctx: &RichContext, frame: &mut Frame<'_>);
 }
