@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use circular_buffer::CircularBuffer;
 use ratatui::{
     layout::Layout,
     macros::{constraint, constraints, line, span},
@@ -26,6 +27,9 @@ pub struct AvailableAPDetails {
     pub frequency: CowStr,
     pub channel: u32,
     pub link_speed: CowStr,
+    pub bssid: CowStr,
+    pub saved: bool,
+    pub signal_history: CircularBuffer<48, u8>,
 }
 
 pub struct AvailableList<'a> {
@@ -112,6 +116,7 @@ impl Widget for AccessPointItem<'_> {
             frequency,
             channel,
             link_speed,
+            ..
         } = self.data;
 
         let bars =

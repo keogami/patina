@@ -1,0 +1,21 @@
+generated_at: 2026-05-20T14:30:00Z
+source_diff_ref: HEAD
+findings:
+  - id: F1
+    path: src/application/home/info.rs
+    lines: [65, 79]
+    category: idiomatic
+    problem: "update match uses an empty-body arm to filter non-Press events plus a separate guarded arm for esc/q/i — the empty arm looks like dead code"
+    fix: "flatten to a single `if let Message::Crossterm(ratatui::crossterm::event::Event::Key(event)) = &ev && event.kind == ratatui::crossterm::event::KeyEventKind::Press && (event.code.is_esc() || event.code.is_char('q') || event.code.is_char('i')) { return Bubble::Yes(Message::FinishInfo); }` followed by `Bubble::No`. Preserve the Press-only filter intentionally so key releases don't close the overlay."
+  - id: F2
+    path: src/application/home/info.rs
+    lines: [441, 450]
+    category: idiomatic
+    problem: "in render_two_column, `let added = s.height() + if left_sections.is_empty() { 0 } else { 1 };` is computed unconditionally but only meaningful on the left branch; the right branch ignores it"
+    fix: "move the `added` calculation inside the `if packing_left` branch; the else branch just pushes to right_sections without any gutter accounting"
+  - id: F3
+    path: src/application/home/info.rs
+    lines: [269, 302]
+    category: overcomplicated
+    problem: "`format!(\"{}\", mtu).into()` (and similar) uses format! solely to invoke Display"
+    fix: "replace with `mtu.to_string().into()` at both sites"

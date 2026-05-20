@@ -17,6 +17,7 @@ use crate::application::{
     home::{
         available::{AvailableAPDetails, AvailableList, ITEM_HEIGHT as AP_ITEM_HEIGHT},
         connected::{ConnectedList, ConnectionData, ITEM_HEIGHT},
+        info::{Info, InfoTarget},
     },
     theme::PATINA,
     utils::{
@@ -29,6 +30,7 @@ use crate::application::{
 pub mod authenticate;
 pub mod available;
 pub mod connected;
+pub mod info;
 
 use super::component::{Component, Message};
 
@@ -41,6 +43,7 @@ pub struct HomeData {
     available_scroll_state: ScrollState,
     available_max_items: Cell<usize>,
     authenticate: Option<authenticate::Authenticate>,
+    info: Option<Info>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,10 +134,11 @@ impl Widget for Help {
                         ("quit", ("q", "quit").into()),
                         ("nav", ("j/k", "navigate").into()),
                         ("con", ("enter", "disconnect").into()),
+                        ("info", ("i", "info").into()),
                         ("tab", ("tab", "move to access points").into()),
                         ("scan", ("s", "force scan").into()),
                     ],
-                    &["nav", "con", "scan", "quit"],
+                    &["nav", "con", "info", "scan", "quit"],
                     (&[], 0),
                 ));
 
@@ -146,10 +150,11 @@ impl Widget for Help {
                         ("quit", ("q", "quit").into()),
                         ("nav", ("j/k", "navigate").into()),
                         ("con", ("enter", "connect").into()),
+                        ("info", ("i", "info").into()),
                         ("tab", ("tab", "move to connections").into()),
                         ("scan", ("s", "force scan").into()),
                     ],
-                    &["nav", "con", "scan", "quit"],
+                    &["nav", "con", "info", "scan", "quit"],
                     (&[], 0),
                 ));
 
@@ -310,6 +315,15 @@ impl HomeData {
             move || {
                 // mock loading, uncomment to checkout loading state
                 // std::thread::sleep(std::time::Duration::from_secs(5));
+                let mk_hist = |center: u8| -> CircularBuffer<48, u8> {
+                    let mut buf = CircularBuffer::<48, u8>::new();
+                    for i in 0..48u8 {
+                        let wobble = (i % 7) as i32 - 3;
+                        let v = (center as i32 + wobble).clamp(0, 100) as u8;
+                        buf.push_back(v);
+                    }
+                    buf
+                };
                 let available: Vec<_> = [
                     AvailableAPDetails {
                         strength: 82.,
@@ -318,6 +332,9 @@ impl HomeData {
                         frequency: "5.22 GHz".into(),
                         channel: 44,
                         link_speed: "650 Mbps".into(),
+                        bssid: "A4:2B:B0:FE:31:9C".into(),
+                        saved: true,
+                        signal_history: mk_hist(82),
                     },
                     AvailableAPDetails {
                         strength: 71.,
@@ -326,6 +343,9 @@ impl HomeData {
                         frequency: "5.75 GHz".into(),
                         channel: 149,
                         link_speed: "867 Mbps".into(),
+                        bssid: "88:3D:24:17:02:A1".into(),
+                        saved: true,
+                        signal_history: mk_hist(71),
                     },
                     AvailableAPDetails {
                         strength: 58.,
@@ -334,6 +354,9 @@ impl HomeData {
                         frequency: "6.13 GHz".into(),
                         channel: 37,
                         link_speed: "1201 Mbps".into(),
+                        bssid: "1C:83:41:9A:82:00".into(),
+                        saved: false,
+                        signal_history: mk_hist(58),
                     },
                     AvailableAPDetails {
                         strength: 42.,
@@ -342,6 +365,9 @@ impl HomeData {
                         frequency: "2.41 GHz".into(),
                         channel: 1,
                         link_speed: "150 Mbps".into(),
+                        bssid: "0C:54:A5:88:2B:77".into(),
+                        saved: false,
+                        signal_history: mk_hist(42),
                     },
                     AvailableAPDetails {
                         strength: 28.,
@@ -350,6 +376,9 @@ impl HomeData {
                         frequency: "2.44 GHz".into(),
                         channel: 6,
                         link_speed: "300 Mbps".into(),
+                        bssid: "E4:95:6E:55:44:A0".into(),
+                        saved: false,
+                        signal_history: mk_hist(28),
                     },
                 ]
                 .into_iter()
@@ -370,6 +399,25 @@ impl HomeData {
                         throughput: CircularBuffer::from_iter(
                             [0, 5, 9, 14, 11, 8, 2, 13].repeat(8),
                         ),
+                        bssid: "A4:2B:B0:FE:31:9C".into(),
+                        gateway: "10.0.0.1".into(),
+                        dns: vec!["1.1.1.1".into(), "9.9.9.9".into()],
+                        mac: "7C:B2:7D:1E:44:08".into(),
+                        mtu: 1500,
+                        security: "WPA2".into(),
+                        channel: 44,
+                        autoconnect: true,
+                        metered: false,
+                        uptime: Duration::from_secs(14523),
+                        rx_bytes: 2_244_874_240,
+                        tx_bytes: 196_083_712,
+                        signal_history: mk_hist(82),
+                        rx_throughput: CircularBuffer::from_iter(
+                            [3, 7, 12, 9, 18, 14, 22, 17, 11, 20, 16, 8].repeat(4),
+                        ),
+                        tx_throughput: CircularBuffer::from_iter(
+                            [1, 2, 4, 3, 5, 6, 3, 7, 4, 2, 5, 3].repeat(4),
+                        ),
                     },
                     ConnectionData::WiredActive {
                         interface: "eth0".into(),
@@ -377,6 +425,21 @@ impl HomeData {
                         name: "eth0".into(),
                         versions: "v4+v6".into(),
                         throughput: CircularBuffer::from_iter(std::iter::repeat_n(0, 16)),
+                        gateway: "192.168.4.1".into(),
+                        dns: vec!["192.168.4.1".into()],
+                        mac: "74:4C:A1:52:8B:0F".into(),
+                        mtu: 1500,
+                        link_speed: "1000 Mbps".into(),
+                        autoconnect: true,
+                        uptime: Duration::from_secs(289_412),
+                        rx_bytes: 19_226_198_016,
+                        tx_bytes: 4_624_416_768,
+                        rx_throughput: CircularBuffer::from_iter(
+                            [20, 28, 35, 22, 40, 33, 45, 30, 38, 26, 48, 31].repeat(4),
+                        ),
+                        tx_throughput: CircularBuffer::from_iter(
+                            [4, 7, 9, 6, 11, 8, 13, 10, 9, 7, 12, 8].repeat(4),
+                        ),
                     },
                     ConnectionData::WifiInactive {
                         name: "Acme-Corp".into(),
@@ -384,6 +447,10 @@ impl HomeData {
                         autoconnect: true,
                         metered: false,
                         tag: "WPA2-Enterprise".into(),
+                        security: "WPA2-Enterprise".into(),
+                        bssid: Some("88:3D:24:17:02:A1".into()),
+                        saved_ip_method: "auto".into(),
+                        saved_dns: vec![],
                     },
                     ConnectionData::WifiInactive {
                         name: "Pixel-Tether".into(),
@@ -391,6 +458,10 @@ impl HomeData {
                         autoconnect: false,
                         metered: true,
                         tag: "WPA3".into(),
+                        security: "WPA3".into(),
+                        bssid: None,
+                        saved_ip_method: "auto".into(),
+                        saved_dns: vec![],
                     },
                 ]
                 .into_iter()
@@ -416,6 +487,7 @@ impl HomeData {
             available_scroll_state: ScrollState::new(),
             available_max_items: Cell::new(ctx.connection_maxitem),
             authenticate: None,
+            info: None,
         }
     }
 
@@ -501,6 +573,13 @@ impl Component for HomeData {
                 Bubble::No => return Bubble::No,
             }
         }
+        if let Some(ref mut info) = self.info {
+            let bubble = info.update(ctx, ev);
+            match bubble {
+                Bubble::Yes(message) => ev = message,
+                Bubble::No => return Bubble::No,
+            }
+        }
 
         match ev {
             Message::Crossterm(ev) => {
@@ -528,6 +607,22 @@ impl Component for HomeData {
                     }
                     ratatui::crossterm::event::Event::Key(key_event) if key_event.code.is_tab() => {
                         self.handle_tab_press(ctx.connection_maxitem);
+                    }
+                    ratatui::crossterm::event::Event::Key(key_event)
+                        if key_event.code.is_char('i') =>
+                    {
+                        let target = match self.selected {
+                            Selected::Connected(idx) => Some(InfoTarget::Connection(
+                                self.connected.list[idx].clone(),
+                            )),
+                            Selected::Available(idx) => Some(InfoTarget::Available(
+                                self.available.list[idx].clone(),
+                            )),
+                            Selected::None => None,
+                        };
+                        if let Some(target) = target {
+                            ctx.message.send(Message::OpenInfo(target)).unwrap();
+                        }
                     }
                     ratatui::crossterm::event::Event::Key(key_event)
                         if key_event.code.is_enter() =>
@@ -564,6 +659,12 @@ impl Component for HomeData {
                 self.authenticate = Some(authenticate::Authenticate::new(
                     authentication_data.access_point,
                 ));
+            }
+            Message::OpenInfo(target) => {
+                self.info = Some(Info::new(target));
+            }
+            Message::FinishInfo => {
+                self.info = None;
             }
         }
 
@@ -714,6 +815,9 @@ impl Component for HomeData {
 
         if let Some(ref mut auth) = self.authenticate {
             auth.draw(ctx, frame);
+        }
+        if let Some(ref mut info) = self.info {
+            info.draw(ctx, frame);
         }
     }
 }

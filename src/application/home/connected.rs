@@ -34,6 +34,21 @@ pub enum ConnectionData {
         link_speed: CowStr,
         versions: CowStr,
         throughput: CircularBuffer<48, usize>,
+        bssid: CowStr,
+        gateway: CowStr,
+        dns: Vec<CowStr>,
+        mac: CowStr,
+        mtu: u32,
+        security: CowStr,
+        channel: u32,
+        autoconnect: bool,
+        metered: bool,
+        uptime: Duration,
+        rx_bytes: u64,
+        tx_bytes: u64,
+        signal_history: CircularBuffer<48, u8>,
+        rx_throughput: CircularBuffer<48, usize>,
+        tx_throughput: CircularBuffer<48, usize>,
     },
     WiredActive {
         interface: CowStr,
@@ -41,6 +56,17 @@ pub enum ConnectionData {
         name: CowStr,
         versions: CowStr,
         throughput: CircularBuffer<48, usize>,
+        gateway: CowStr,
+        dns: Vec<CowStr>,
+        mac: CowStr,
+        mtu: u32,
+        link_speed: CowStr,
+        autoconnect: bool,
+        uptime: Duration,
+        rx_bytes: u64,
+        tx_bytes: u64,
+        rx_throughput: CircularBuffer<48, usize>,
+        tx_throughput: CircularBuffer<48, usize>,
     },
     WifiInactive {
         name: CowStr,
@@ -48,6 +74,10 @@ pub enum ConnectionData {
         autoconnect: bool,
         metered: bool,
         tag: CowStr,
+        security: CowStr,
+        bssid: Option<CowStr>,
+        saved_ip_method: CowStr,
+        saved_dns: Vec<CowStr>,
     },
 }
 
@@ -152,6 +182,7 @@ impl Widget for ConnectionItem<'_> {
                 link_speed,
                 versions,
                 throughput,
+                ..
             } => {
                 let bars = span!(disabled_color(PATINA.live); "{}  ", strength_bars(*strength));
                 let strength = span!(disabled_color(PATINA.dim);"{}%  ", strength.round() as u32);
@@ -176,6 +207,7 @@ impl Widget for ConnectionItem<'_> {
                 name,
                 versions,
                 throughput,
+                ..
             } => {
                 let bars = span!(disabled_color(PATINA.live); "═══  ");
                 let name = span!(disabled_color(PATINA.fg); "{} ", name);
@@ -200,6 +232,7 @@ impl Widget for ConnectionItem<'_> {
                 autoconnect,
                 metered,
                 tag,
+                ..
             } => {
                 let kind = span!(disabled_color(PATINA.fg_alt); "wifi  ");
                 let name = span!(disabled_color(PATINA.fg); "{}", name);

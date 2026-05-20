@@ -6,7 +6,9 @@ use std::{
 use enum_dispatch::enum_dispatch;
 use ratatui::{Frame, crossterm};
 
-use crate::application::home::{available::AvailableAPDetails, connected::ConnectionData};
+use crate::application::home::{
+    available::AvailableAPDetails, connected::ConnectionData, info::InfoTarget,
+};
 
 /// Read only context, shared across the application
 pub struct Context {
@@ -47,6 +49,8 @@ pub enum Message {
     FinishLoading,
     FinishAuthentication,
     Authenticate(AuthenticationData),
+    OpenInfo(InfoTarget),
+    FinishInfo,
 }
 
 pub enum Bubble {
