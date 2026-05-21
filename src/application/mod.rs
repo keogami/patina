@@ -241,6 +241,12 @@ impl Application {
                     crate::backend::bridge::BridgeResult::AccessPoints(_) => {
                         self.startup_pending = self.startup_pending.saturating_sub(1);
                     }
+                    crate::backend::bridge::BridgeResult::ScanRequested { interface, result: Ok(()) } => {
+                        // After scan completes, refresh AP list
+                        self.bridge.send(BridgeCommand::GetAccessPoints {
+                            interface: interface.clone(),
+                        });
+                    }
                     _ => {}
                 }
                 

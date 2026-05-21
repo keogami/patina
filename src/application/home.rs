@@ -691,8 +691,11 @@ impl Component for HomeData {
                     BridgeResult::AllDevices(Ok(_devices)) => {
                         // Devices loaded, handled by Application startup logic
                     }
-                    BridgeResult::ScanRequested(Ok(())) => {
-                        // Scan completed, no specific UI update needed
+                    BridgeResult::ConnectionAddedAndActivated(Ok(active)) => {
+                        // New connection added and activated - same handling as saved profile activation
+                        self.active_connections.push(active);
+                        self.rebuild_connected_list();
+                        self.authenticate = None;
                     }
                     BridgeResult::ConnectionActivated(Ok(active)) => {
                         // Connection activated successfully - add to active list and rebuild

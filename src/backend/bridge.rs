@@ -79,7 +79,7 @@ pub enum BridgeResult {
     AllDevices(BridgeResultType<Vec<Device>>),
     DeviceByInterface(BridgeResultType<Option<Device>>),
     AccessPoints(BridgeResultType<Vec<AccessPoint>>),
-    ScanRequested(BridgeResultType<()>),
+    ScanRequested { interface: String, result: BridgeResultType<()> },
 
     // Connection Control results
     Connections(BridgeResultType<Vec<ConnectionProfile>>),
@@ -183,9 +183,13 @@ impl BackendBridge {
                     BridgeCommand::RequestScan { interface } => {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
+                        let iface = interface.clone();
                         tokio::spawn(async move {
                             let res = b.request_scan(&interface).await.map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::ScanRequested(res)));
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::ScanRequested {
+                                interface: iface,
+                                result: res,
+                            }));
                         });
                     }
 
