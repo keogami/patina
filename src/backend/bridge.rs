@@ -251,14 +251,12 @@ impl BackendBridge {
                         });
                     }
                     BridgeCommand::AddAndActivateConnection { settings, interface } => {
-                        log::info!("BRIDGE: AddAndActivateConnection");
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
                             let res = b.add_and_activate_connection(&settings, interface.as_deref())
                                 .await
                                 .map_err(BridgeError::from);
-                            log::info!("BRIDGE: AddAndActivateConnection result={:?}", res.is_ok());
                             let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionAddedAndActivated(res)));
                         });
                     }

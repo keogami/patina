@@ -558,12 +558,8 @@ impl Component for HomeData {
         if !matches!(ev, Message::BridgeResult(_)) {
             if let Some(ref mut auth) = self.authenticate {
                 let bubble = auth.update(ctx, ev);
-                log::debug!("HOME: overlay returned bubble variant={:?}", std::mem::discriminant(&bubble));
                 match bubble {
-                    Bubble::Yes(message) => {
-                        log::info!("HOME: overlay bubbled message variant={:?}", std::mem::discriminant(&message));
-                        ev = message;
-                    }
+                    Bubble::Yes(message) => ev = message,
                     Bubble::No => return Bubble::No,
                 }
             }
@@ -679,7 +675,6 @@ impl Component for HomeData {
                 self.info = None;
             }
             Message::BridgeResult(result) => {
-                log::info!("HOME: received BridgeResult variant={:?}", std::mem::discriminant(&result));
                 match result {
                     BridgeResult::ActiveConnections(Ok(active_conns)) => {
                         self.active_connections = active_conns;
@@ -700,7 +695,6 @@ impl Component for HomeData {
                         // Devices loaded, handled by Application startup logic
                     }
                     BridgeResult::ConnectionAddedAndActivated(Ok(active)) => {
-                        log::info!("HOME: ConnectionAddedAndActivated id={} name={}", active.id, active.name);
                         self.active_connections.push(active);
                         self.rebuild_connected_list();
                         self.authenticate = None;

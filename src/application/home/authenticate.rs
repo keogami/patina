@@ -62,7 +62,6 @@ impl Component for Authenticate {
             Message::Crossterm(ratatui::crossterm::event::Event::Key(event))
                 if event.code.is_enter() =>
             {
-                log::info!("AUTH: enter pressed, returning AuthSubmitted ssid={}", self.access_point.ssid);
                 return Bubble::Yes(Message::AuthSubmitted {
                     ssid: self.access_point.ssid.to_string(),
                     password: self.password.to_string(),

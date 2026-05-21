@@ -128,7 +128,6 @@ impl Application {
     }
 
     pub fn update(&mut self, ev: Message) {
-        log::debug!("APP: got message variant={:?}", std::mem::discriminant(&ev));
         // Intercept user intent messages and convert to bridge commands
         match &ev {
             Message::RequestConnect { uuid, interface } => {
@@ -159,7 +158,6 @@ impl Application {
                 return;
             }
             Message::AuthSubmitted { ssid, password, autoconnect: _ } => {
-                log::info!("APP: AuthSubmitted ssid={} password_len={}", ssid, password.len());
                 self.bridge.send(BridgeCommand::AddAndActivateConnection {
                     settings: crate::backend::types::ConnectionSettings {
                         common: crate::backend::types::CommonSettings {
