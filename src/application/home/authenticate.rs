@@ -63,6 +63,7 @@ impl Component for Authenticate {
                 if event.code.is_enter() =>
             {
                 return Bubble::Yes(Message::AuthSubmitted {
+                    ssid: self.access_point.ssid.to_string(),
                     password: self.password.to_string(),
                     autoconnect: self.autoconnect,
                 });

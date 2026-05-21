@@ -65,7 +65,7 @@ pub enum Message {
     RequestScan { interface: String },
     RequestDeviceList,
     RequestConnectionList,
-    AuthSubmitted { password: String, autoconnect: bool },
+    AuthSubmitted { ssid: String, password: String, autoconnect: bool },
     RequestAddAndActivate { settings: ConnectionSettings, interface: Option<String> },
 }
 

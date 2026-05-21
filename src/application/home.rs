@@ -700,11 +700,10 @@ impl Component for HomeData {
                         self.rebuild_connected_list();
                         self.authenticate = None;
                     }
-                    BridgeResult::ConnectionDeactivated { active_id: _, result: Ok(()) } => {
-                        // Connection deactivated successfully - remove from active list and rebuild
-                        // Note: We should use active_id to identify which connection to remove,
-                        // but the result doesn't tell us which one. This is a limitation.
-                        // For now, we'll rely on the next refresh to update the list.
+                    BridgeResult::ConnectionDeactivated { active_id, result: Ok(()) } => {
+                        // Remove the deactivated connection from active list and rebuild
+                        self.active_connections.retain(|ac| ac.id != *active_id);
+                        self.rebuild_connected_list();
                     }
                     _ => {
                         // Handle other results or errors if needed

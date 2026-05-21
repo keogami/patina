@@ -157,13 +157,11 @@ impl Application {
                 let _ = self.bridge.send(BridgeCommand::ListConnections);
                 return;
             }
-            Message::AuthSubmitted { password, autoconnect: _ } => {
-                // TODO: Implement proper connection creation and activation
-                // For now, just close the auth dialog and send AddAndActivateConnection
+            Message::AuthSubmitted { ssid, password, autoconnect: _ } => {
                 let _ = self.bridge.send(BridgeCommand::AddAndActivateConnection {
                     settings: crate::backend::types::ConnectionSettings {
                         common: crate::backend::types::CommonSettings {
-                            name: "wifi-connection".to_string(),
+                            name: ssid.clone(),
                             uuid: uuid::Uuid::new_v4(),
                             autoconnect: true,
                             interface_name: None,
@@ -173,7 +171,7 @@ impl Application {
                             zone: None,
                         },
                         connection_type: crate::backend::types::ConnectionTypeSettings::Wifi {
-                            ssid: vec![], // TODO: extract from auth dialog
+                            ssid: ssid.as_bytes().to_vec(),
                             mode: crate::backend::types::WifiMode::Infra,
                             bssid: None,
                             band: None,
