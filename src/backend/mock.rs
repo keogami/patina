@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
 
@@ -183,20 +183,118 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
         }
     }
 
-    fn get_connection_by_uuid(&self, _uuid: &Uuid) -> impl Future<Output = Result<ConnectionProfile>> + Send {
-        async move { anyhow::bail!("not yet implemented") }
+    fn get_connection_by_uuid(&self, uuid: &Uuid) -> impl Future<Output = Result<ConnectionProfile>> + Send {
+        let backend = self.clone();
+        let uuid = *uuid;
+        async move {
+            let state = backend.0.lock().await;
+            state.saved_connections.iter()
+                .find(|c| c.uuid == uuid)
+                .cloned()
+                .context("Connection not found")
+        }
     }
-    fn activate_connection(&self, _uuid: &Uuid, _interface: Option<&str>) -> impl Future<Output = Result<ActiveConnection>> + Send {
-        async move { anyhow::bail!("not yet implemented") }
+    fn activate_connection(&self, uuid: &Uuid, interface: Option<&str>) -> impl Future<Output = Result<ActiveConnection>> + Send {
+        let backend = self.clone();
+        let uuid = *uuid;
+        let interface = interface.map(|s| s.to_string());
+        async move {
+            let mut state = backend.0.lock().await;
+            let profile = state.saved_connections.iter()
+                .find(|c| c.uuid == uuid)
+                .cloned()
+                .context("Connection not found")?;
+
+            let id = format!("active-{}", state.next_active_id);
+            state.next_active_id += 1;
+
+            let interface = interface.unwrap_or_else(|| profile.interface_name.clone().unwrap_or_else(|| "unknown".into()));
+
+            let active = ActiveConnection {
+                id: id.clone(),
+                profile_uuid: profile.uuid,
+                name: profile.name.clone(),
+                connection_type: profile.connection_type,
+                interface: interface.clone(),
+                state: ConnectionState::Activated,
+                state_flags: 0,
+                default: false,
+                default6: false,
+                vpn: false,
+                ip4_config: Some(IpConfig {
+                    method: IpMethod::Auto,
+                    addresses: vec![IpAddressWithPrefix { address: "192.168.1.100".parse().unwrap(), prefix: 24 }],
+                    gateway: Some("192.168.1.1".into()),
+                    dns: vec!["192.168.1.1".into()],
+                    search_domains: vec![],
+                    routes: vec![],
+                }),
+                ip6_config: None,
+                devices: vec![interface],
+            };
+
+            // Emit state change to subscribers
+            for tx in state.active_event_txs.iter() {
+                let _ = tx.send(ActiveEvent::StateChanged {
+                    active_id: id.clone(),
+                    old: ConnectionState::Unknown,
+                    new: ConnectionState::Activated,
+                    reason: ConnectionStateReason::Unknown,
+                });
+            }
+
+            state.active_connections.push(active.clone());
+            Ok(active)
+        }
     }
-    fn deactivate_connection(&self, _active_id: &str) -> impl Future<Output = Result<()>> + Send {
-        async move { anyhow::bail!("not yet implemented") }
+    fn deactivate_connection(&self, active_id: &str) -> impl Future<Output = Result<()>> + Send {
+        let backend = self.clone();
+        let active_id = active_id.to_string();
+        async move {
+            let mut state = backend.0.lock().await;
+            let idx = state.active_connections.iter()
+                .position(|a| a.id == active_id)
+                .context("Active connection not found")?;
+
+            let removed = state.active_connections.remove(idx);
+
+            for tx in state.active_event_txs.iter() {
+                let _ = tx.send(ActiveEvent::StateChanged {
+                    active_id: removed.id.clone(),
+                    old: ConnectionState::Activated,
+                    new: ConnectionState::Deactivated,
+                    reason: ConnectionStateReason::Unknown,
+                });
+            }
+
+            Ok(())
+        }
     }
-    fn disconnect_device(&self, _interface: &str) -> impl Future<Output = Result<()>> + Send {
-        async move { anyhow::bail!("not yet implemented") }
+    fn disconnect_device(&self, interface: &str) -> impl Future<Output = Result<()>> + Send {
+        let backend = self.clone();
+        let interface = interface.to_string();
+        async move {
+            let mut state = backend.0.lock().await;
+            let to_remove: Vec<String> = state.active_connections.iter()
+                .filter(|a| a.interface == interface)
+                .map(|a| a.id.clone())
+                .collect();
+            for id in to_remove {
+                if let Some(idx) = state.active_connections.iter().position(|a| a.id == id) {
+                    state.active_connections.remove(idx);
+                }
+            }
+            Ok(())
+        }
     }
-    fn add_and_activate_connection(&self, _settings: &ConnectionSettings, _interface: Option<&str>) -> impl Future<Output = Result<ActiveConnection>> + Send {
-        async move { anyhow::bail!("not yet implemented") }
+    fn add_and_activate_connection(&self, settings: &ConnectionSettings, interface: Option<&str>) -> impl Future<Output = Result<ActiveConnection>> + Send {
+        let backend = self.clone();
+        let settings = settings.clone();
+        let interface = interface.map(|s| s.to_string());
+        async move {
+            let profile = backend.add_connection(&settings).await?;
+            backend.activate_connection(&profile.uuid, interface.as_deref()).await
+        }
     }
     fn get_secrets(&self, _uuid: &Uuid, _setting_name: &str) -> impl Future<Output = Result<Secrets>> + Send {
         async move { Ok(Secrets::new()) }
@@ -207,8 +305,40 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
     fn update_connection(&self, _uuid: &Uuid, _settings: &ConnectionSettings) -> impl Future<Output = Result<()>> + Send {
         async move { anyhow::bail!("not yet implemented") }
     }
-    fn add_connection(&self, _settings: &ConnectionSettings) -> impl Future<Output = Result<ConnectionProfile>> + Send {
-        async move { anyhow::bail!("not yet implemented") }
+    fn add_connection(&self, settings: &ConnectionSettings) -> impl Future<Output = Result<ConnectionProfile>> + Send {
+        let backend = self.clone();
+        let settings = settings.clone();
+        async move {
+            let mut state = backend.0.lock().await;
+            let profile = ConnectionProfile {
+                uuid: settings.common.uuid,
+                name: settings.common.name.clone(),
+                connection_type: match settings.connection_type {
+                    ConnectionTypeSettings::Wifi { .. } => ConnectionType::Wifi,
+                    ConnectionTypeSettings::Ethernet { .. } => ConnectionType::Ethernet,
+                    ConnectionTypeSettings::Bond { .. } => ConnectionType::Bond,
+                    ConnectionTypeSettings::Bridge { .. } => ConnectionType::Bridge,
+                    ConnectionTypeSettings::Vlan { .. } => ConnectionType::Vlan,
+                    ConnectionTypeSettings::Team { .. } => ConnectionType::Team,
+                    ConnectionTypeSettings::Infiniband { .. } => ConnectionType::Infiniband,
+                },
+                autoconnect: settings.common.autoconnect,
+                interface_name: settings.common.interface_name.clone(),
+                last_used: None,
+                unsaved: false,
+                filename: Some(format!("/etc/NetworkManager/system-connections/{}.nmconnection", settings.common.name)),
+            };
+            
+            state.saved_connections.push(profile.clone());
+            state.connection_settings.insert(profile.uuid, settings);
+            
+            // Emit event to subscribers
+            for tx in state.profile_event_txs.iter() {
+                let _ = tx.send(ProfileEvent::Added(profile.clone()));
+            }
+            
+            Ok(profile)
+        }
     }
     fn delete_connection(&self, _uuid: &Uuid) -> impl Future<Output = Result<()>> + Send {
         async move { anyhow::bail!("not yet implemented") }
@@ -325,5 +455,42 @@ mod tests {
         let aps = backend.get_access_points("wlan0").await.unwrap();
         assert!(!aps.is_empty());
         assert!(aps.iter().any(|ap| ap.ssid == b"Overcast-5G"));
+    }
+
+    #[tokio::test]
+    async fn mock_activates_connection() {
+        let backend = MockBackend::new();
+        let conns = backend.list_connections().await.unwrap();
+        let target = conns.iter().find(|c| c.name == "CoffeeShop").unwrap();
+
+        let active = backend.activate_connection(&target.uuid, Some("wlan0")).await.unwrap();
+        assert_eq!(active.name, "CoffeeShop");
+        assert_eq!(active.interface, "wlan0");
+        assert_eq!(active.state, ConnectionState::Activated);
+
+        let actives = backend.get_active_connections().await.unwrap();
+        assert!(actives.iter().any(|a| a.id == active.id));
+    }
+
+    #[tokio::test]
+    async fn mock_deactivates_connection() {
+        let backend = MockBackend::new();
+        let actives = backend.get_active_connections().await.unwrap();
+        let id = actives[0].id.clone();
+
+        backend.deactivate_connection(&id).await.unwrap();
+
+        let actives = backend.get_active_connections().await.unwrap();
+        assert!(!actives.iter().any(|a| a.id == id));
+    }
+
+    #[tokio::test]
+    async fn mock_get_connection_by_uuid() {
+        let backend = MockBackend::new();
+        let conns = backend.list_connections().await.unwrap();
+        let uuid = conns[0].uuid;
+
+        let found = backend.get_connection_by_uuid(&uuid).await.unwrap();
+        assert_eq!(found.uuid, uuid);
     }
 }
