@@ -637,4 +637,29 @@ mod tests {
         let state = backend.get_global_state().await.unwrap();
         assert_eq!(state.hostname, "new-host");
     }
+
+    #[tokio::test]
+    async fn mock_subscription_receives_scan_done() {
+        let backend = MockBackend::new();
+        let mut rx = backend.subscribe_ap_events("wlan0").await.unwrap();
+
+        backend.request_scan("wlan0").await.unwrap();
+
+        // Wait up to 1 second for the event
+        let event = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await;
+        assert!(event.is_ok());
+        assert!(matches!(event.unwrap(), Some(ApEvent::ScanDone { .. })));
+    }
+
+    #[tokio::test]
+    async fn mock_subscription_receives_device_events() {
+        let backend = MockBackend::new();
+        let mut rx = backend.subscribe_device_events().await.unwrap();
+
+        backend.set_device_managed("wlan0", false).await.unwrap();
+
+        let event = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await;
+        assert!(event.is_ok());
+        assert!(matches!(event.unwrap(), Some(DeviceEvent::ManagedChanged { interface, managed }) if interface == "wlan0" && !managed));
+    }
 }
