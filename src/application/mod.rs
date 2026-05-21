@@ -13,6 +13,7 @@ use crate::application::{
     home::HomeData,
     theme::PATINA,
 };
+use crate::backend::NetworkManagerBackend;
 
 pub mod component;
 mod home;
@@ -21,16 +22,17 @@ pub mod utils;
 
 pub use component::Context;
 
-pub struct Application {
+pub struct Application<B: NetworkManagerBackend> {
+    backend: B,
     context: Arc<RichContext>,
-    #[allow(unused)]
-    pane: Pane,
+    pane: Pane<B>,
     message_tx: Arc<std::sync::mpsc::Sender<Message>>,
     message_rx: Option<std::sync::mpsc::Receiver<Message>>,
 }
 
-impl Application {
+impl<B: NetworkManagerBackend> Application<B> {
     pub fn new(
+        backend: B,
         Context {
             log_file,
             fps,
@@ -48,7 +50,8 @@ impl Application {
         };
 
         Self {
-            pane: Pane::Home(HomeData::new(&context)),
+            backend: backend.clone(),
+            pane: Pane::Home(HomeData::new(backend, &context)),
             context: context.into(),
             message_tx,
             message_rx: Some(message_rx),
@@ -137,6 +140,6 @@ impl Application {
 }
 
 #[enum_dispatch(Component)]
-pub enum Pane {
-    Home(HomeData),
+pub enum Pane<B: NetworkManagerBackend> {
+    Home(HomeData<B>),
 }

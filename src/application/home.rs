@@ -26,6 +26,7 @@ use crate::application::{
         ScrollState, Separator, WidgetList, selected_scroll_with_direction,
     },
 };
+use crate::backend::{ConnectionType, ActiveConnection, AccessPoint, SecurityType, WpaVersion::Wpa1, WpaVersion::Wpa2, WpaVersion::Wpa3, NetworkManagerBackend};
 
 pub mod authenticate;
 pub mod available;
@@ -34,7 +35,107 @@ pub mod info;
 
 use super::component::{Component, Message};
 
-pub struct HomeData {
+fn map_active_to_connection_data(active: ActiveConnection) -> ConnectionData {
+    match active.connection_type {
+        ConnectionType::Wifi => ConnectionData::WifiActive {
+            strength: 82.0,
+            name: active.name.into(),
+            interface: active.interface.into(),
+            ip: active.ip4_config.as_ref()
+                .and_then(|c| c.addresses.first())
+                .map(|a| format!("{}/{}", a.address, a.prefix).into())
+                .unwrap_or_else(|| "0.0.0.0/0".into()),
+            frequency: "5 GHz".into(),
+            link_speed: "650 Mbps".into(),
+            versions: if active.ip6_config.is_some() { "v4+v6".into() } else { "v4".into() },
+            throughput: CircularBuffer::new(),
+            bssid: "00:00:00:00:00:00".into(),
+            gateway: active.ip4_config.and_then(|c| c.gateway).unwrap_or_default().into(),
+            dns: Vec::new(),
+            mac: "00:00:00:00:00:00".into(),
+            mtu: 1500,
+            security: "WPA2".into(),
+            channel: 44,
+            autoconnect: true,
+            metered: false,
+            uptime: Duration::from_secs(0),
+            rx_bytes: 0,
+            tx_bytes: 0,
+            signal_history: CircularBuffer::new(),
+            rx_throughput: CircularBuffer::new(),
+            tx_throughput: CircularBuffer::new(),
+        },
+        ConnectionType::Ethernet => ConnectionData::WiredActive {
+            interface: active.interface.into(),
+            ip: active.ip4_config.as_ref()
+                .and_then(|c| c.addresses.first())
+                .map(|a| format!("{}/{}", a.address, a.prefix).into())
+                .unwrap_or_else(|| "0.0.0.0/0".into()),
+            name: active.name.into(),
+            versions: if active.ip6_config.is_some() { "v4+v6".into() } else { "v4".into() },
+            throughput: CircularBuffer::new(),
+            gateway: active.ip4_config.and_then(|c| c.gateway).unwrap_or_default().into(),
+            dns: Vec::new(),
+            mac: "00:00:00:00:00:00".into(),
+            mtu: 1500,
+            link_speed: "1 Gbps".into(),
+            autoconnect: true,
+            uptime: Duration::from_secs(0),
+            rx_bytes: 0,
+            tx_bytes: 0,
+            rx_throughput: CircularBuffer::new(),
+            tx_throughput: CircularBuffer::new(),
+        },
+        _ => ConnectionData::WiredActive {
+            interface: active.interface.into(),
+            ip: "0.0.0.0/0".into(),
+            name: active.name.into(),
+            versions: "v4".into(),
+            throughput: CircularBuffer::new(),
+            gateway: "".into(),
+            dns: Vec::new(),
+            mac: "00:00:00:00:00:00".into(),
+            mtu: 1500,
+            link_speed: "".into(),
+            autoconnect: true,
+            uptime: Duration::from_secs(0),
+            rx_bytes: 0,
+            tx_bytes: 0,
+            rx_throughput: CircularBuffer::new(),
+            tx_throughput: CircularBuffer::new(),
+        },
+    }
+}
+
+fn map_ap_to_available_details(ap: AccessPoint) -> AvailableAPDetails {
+    AvailableAPDetails {
+        strength: ap.strength as f32,
+        ssid: String::from_utf8_lossy(&ap.ssid).into_owned().into(),
+        security: match ap.security {
+            SecurityType::Open => "Open".into(),
+            SecurityType::Wep => "WEP".into(),
+            SecurityType::WpaPsk { version } => match version {
+                Wpa1 => "WPA".into(),
+                Wpa2 => "WPA2".into(),
+                Wpa3 => "WPA3".into(),
+            },
+            SecurityType::WpaEnterprise { version } => match version {
+                Wpa1 => "WPA-E".into(),
+                Wpa2 => "WPA2-E".into(),
+                Wpa3 => "WPA3-E".into(),
+            },
+        },
+        frequency: format!("{} GHz", ap.frequency as f32 / 1000.0).into(),
+        channel: ap.channel,
+        link_speed: format!("{} Mbps", ap.max_bitrate / 1000).into(),
+        bssid: ap.bssid.into(),
+        saved: false,
+        signal_history: CircularBuffer::new(),
+    }
+}
+
+pub struct HomeData<B: NetworkManagerBackend> {
+    backend: B,
     loading: Option<Spinner>,
     connected: Connected,
     available: Available,
@@ -300,8 +401,8 @@ impl Selected {
     }
 }
 
-impl HomeData {
-    pub fn new(ctx: &RichContext) -> Self {
+impl<B: NetworkManagerBackend> HomeData<B> {
+    pub fn new(backend: B, ctx: &RichContext) -> Self {
         let loading = Spinner::new(SpinnerType::dot(), ctx.fps);
         let connected = Connected { list: Vec::new() };
         let available = Available { list: Vec::new() };
@@ -311,170 +412,31 @@ impl HomeData {
         // that to select the very first item in the connection list. of course,
         // handling the edge cases
         let message_tx = ctx.message.clone();
+        let backend_clone = backend.clone();
         tokio::spawn(async move {
-            // mock loading, uncomment to checkout loading state
-            // std::thread::sleep(std::time::Duration::from_secs(5));
-            let mk_hist = |center: u8| -> CircularBuffer<48, u8> {
-                let mut buf = CircularBuffer::<48, u8>::new();
-                for i in 0..48u8 {
-                    let wobble = (i % 7) as i32 - 3;
-                    let v = (center as i32 + wobble).clamp(0, 100) as u8;
-                    buf.push_back(v);
-                }
-                buf
+            // Load from backend instead of hardcoded data
+            let devices = backend_clone.get_all_devices().await.unwrap_or_default();
+            let active_conns = backend_clone.get_active_connections().await.unwrap_or_default();
+            let aps = if let Some(wifi) = devices.iter().find(|d| matches!(d.device_type, crate::backend::DeviceType::Wifi)) {
+                backend_clone.get_access_points(&wifi.interface).await.unwrap_or_default()
+            } else {
+                Vec::new()
             };
-            let available: Vec<_> = [
-                AvailableAPDetails {
-                    strength: 82.,
-                    ssid: "Overcast-5G".into(),
-                    security: "WPA2".into(),
-                    frequency: "5.22 GHz".into(),
-                    channel: 44,
-                    link_speed: "650 Mbps".into(),
-                    bssid: "A4:2B:B0:FE:31:9C".into(),
-                    saved: true,
-                    signal_history: mk_hist(82),
-                },
-                AvailableAPDetails {
-                    strength: 71.,
-                    ssid: "Acme-Corp".into(),
-                    security: "WPA2-E".into(),
-                    frequency: "5.75 GHz".into(),
-                    channel: 149,
-                    link_speed: "867 Mbps".into(),
-                    bssid: "88:3D:24:17:02:A1".into(),
-                    saved: true,
-                    signal_history: mk_hist(71),
-                },
-                AvailableAPDetails {
-                    strength: 58.,
-                    ssid: "FiberLink_9A82".into(),
-                    security: "WPA3".into(),
-                    frequency: "6.13 GHz".into(),
-                    channel: 37,
-                    link_speed: "1201 Mbps".into(),
-                    bssid: "1C:83:41:9A:82:00".into(),
-                    saved: false,
-                    signal_history: mk_hist(58),
-                },
-                AvailableAPDetails {
-                    strength: 42.,
-                    ssid: "xfinitywifi".into(),
-                    security: "Open".into(),
-                    frequency: "2.41 GHz".into(),
-                    channel: 1,
-                    link_speed: "150 Mbps".into(),
-                    bssid: "0C:54:A5:88:2B:77".into(),
-                    saved: false,
-                    signal_history: mk_hist(42),
-                },
-                AvailableAPDetails {
-                    strength: 28.,
-                    ssid: "TP-Link_5544".into(),
-                    security: "WPA2".into(),
-                    frequency: "2.44 GHz".into(),
-                    channel: 6,
-                    link_speed: "300 Mbps".into(),
-                    bssid: "E4:95:6E:55:44:A0".into(),
-                    saved: false,
-                    signal_history: mk_hist(28),
-                },
-            ]
-            .into_iter()
-            .cycle()
-            .take(24)
-            .map(Arc::new)
-            .collect();
 
-            let conns: Vec<_> = [
-                ConnectionData::WifiActive {
-                    strength: 82.,
-                    name: "Overcast-5G".into(),
-                    interface: "wlan0".into(),
-                    ip: "10.0.0.147/24".into(),
-                    frequency: "5 GHz".into(),
-                    link_speed: "650 Mbps".into(),
-                    versions: "v4+v6".into(),
-                    throughput: CircularBuffer::from_iter([0, 5, 9, 14, 11, 8, 2, 13].repeat(8)),
-                    bssid: "A4:2B:B0:FE:31:9C".into(),
-                    gateway: "10.0.0.1".into(),
-                    dns: vec!["1.1.1.1".into(), "9.9.9.9".into()],
-                    mac: "7C:B2:7D:1E:44:08".into(),
-                    mtu: 1500,
-                    security: "WPA2".into(),
-                    channel: 44,
-                    autoconnect: true,
-                    metered: false,
-                    uptime: Duration::from_secs(14523),
-                    rx_bytes: 2_244_874_240,
-                    tx_bytes: 196_083_712,
-                    signal_history: mk_hist(82),
-                    rx_throughput: CircularBuffer::from_iter(
-                        [3, 7, 12, 9, 18, 14, 22, 17, 11, 20, 16, 8].repeat(4),
-                    ),
-                    tx_throughput: CircularBuffer::from_iter(
-                        [1, 2, 4, 3, 5, 6, 3, 7, 4, 2, 5, 3].repeat(4),
-                    ),
-                },
-                ConnectionData::WiredActive {
-                    interface: "eth0".into(),
-                    ip: "192.168.4.22/24".into(),
-                    name: "eth0".into(),
-                    versions: "v4+v6".into(),
-                    throughput: CircularBuffer::from_iter(std::iter::repeat_n(0, 16)),
-                    gateway: "192.168.4.1".into(),
-                    dns: vec!["192.168.4.1".into()],
-                    mac: "74:4C:A1:52:8B:0F".into(),
-                    mtu: 1500,
-                    link_speed: "1000 Mbps".into(),
-                    autoconnect: true,
-                    uptime: Duration::from_secs(289_412),
-                    rx_bytes: 19_226_198_016,
-                    tx_bytes: 4_624_416_768,
-                    rx_throughput: CircularBuffer::from_iter(
-                        [20, 28, 35, 22, 40, 33, 45, 30, 38, 26, 48, 31].repeat(4),
-                    ),
-                    tx_throughput: CircularBuffer::from_iter(
-                        [4, 7, 9, 6, 11, 8, 13, 10, 9, 7, 12, 8].repeat(4),
-                    ),
-                },
-                ConnectionData::WifiInactive {
-                    name: "Acme-Corp".into(),
-                    last_used: Duration::from_secs(60 * 60 * 24),
-                    autoconnect: true,
-                    metered: false,
-                    tag: "WPA2-Enterprise".into(),
-                    security: "WPA2-Enterprise".into(),
-                    bssid: Some("88:3D:24:17:02:A1".into()),
-                    saved_ip_method: "auto".into(),
-                    saved_dns: vec![],
-                },
-                ConnectionData::WifiInactive {
-                    name: "Pixel-Tether".into(),
-                    last_used: Duration::from_secs(60 * 60 * 24 * 14),
-                    autoconnect: false,
-                    metered: true,
-                    tag: "WPA3".into(),
-                    security: "WPA3".into(),
-                    bssid: None,
-                    saved_ip_method: "auto".into(),
-                    saved_dns: vec![],
-                },
-            ]
-            .into_iter()
-            .cycle()
-            .take(12)
-            .map(Arc::new)
-            .collect();
+            let connected_list: Vec<_> = active_conns.into_iter()
+                .map(|ac| Arc::new(map_active_to_connection_data(ac)))
+                .collect();
+            let _ = message_tx.send(Message::LoadConnected(Connected { list: connected_list }));
 
-            let available = Available { list: available };
-            let connected = Connected { list: conns };
-            message_tx.send(Message::LoadConnected(connected)).unwrap();
-            message_tx.send(Message::LoadAvailable(available)).unwrap();
-            message_tx.send(Message::FinishLoading).unwrap();
+            let available_list: Vec<_> = aps.into_iter()
+                .map(|ap| Arc::new(map_ap_to_available_details(ap)))
+                .collect();
+            let _ = message_tx.send(Message::LoadAvailable(Available { list: available_list }));
+            let _ = message_tx.send(Message::FinishLoading);
         });
 
         Self {
+            backend,
             loading: Some(loading),
             connected,
             available,
@@ -560,7 +522,7 @@ fn needs_authentication(_access_point: &AvailableAPDetails) -> anyhow::Result<bo
     Ok(true)
 }
 
-impl Component for HomeData {
+impl<B: NetworkManagerBackend> Component for HomeData<B> {
     fn update(&mut self, ctx: &RichContext, mut ev: Message) -> Bubble {
         if let Some(ref mut auth) = self.authenticate {
             let bubble = auth.update(ctx, ev);

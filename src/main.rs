@@ -8,6 +8,9 @@ use crate::application::{Application, Context as AppContext};
 mod application;
 mod backend;
 
+#[cfg(feature = "mock")]
+use crate::backend::mock::MockBackend;
+
 #[cfg(test)]
 mod tests;
 
@@ -71,9 +74,14 @@ fn main() -> anyhow::Result<()> {
         connection_maxitem: 5,
     };
 
-    let application = Application::new(context);
+    #[cfg(feature = "mock")]
+    {
+        let application = Application::new(MockBackend::new(), context);
+        application.run()?;
+    }
 
-    application.run()?;
+    #[cfg(not(feature = "mock"))]
+    compile_error!("Real backend not yet implemented. Build with --features mock.");
 
     Ok(())
 }
