@@ -692,19 +692,18 @@ impl Component for HomeData {
                         // Devices loaded, handled by Application startup logic
                     }
                     BridgeResult::ConnectionAddedAndActivated(Ok(active)) => {
-                        // New connection added and activated - same handling as saved profile activation
                         self.active_connections.push(active);
                         self.rebuild_connected_list();
                         self.authenticate = None;
+                        self.loading = None;
                     }
                     BridgeResult::ConnectionActivated(Ok(active)) => {
-                        // Connection activated successfully - add to active list and rebuild
                         self.active_connections.push(active);
                         self.rebuild_connected_list();
                         self.authenticate = None;
+                        self.loading = None;
                     }
                     BridgeResult::ConnectionDeactivated { active_id, result: Ok(()) } => {
-                        // Remove the deactivated connection from active list and rebuild
                         self.active_connections.retain(|ac| ac.id != *active_id);
                         self.rebuild_connected_list();
                     }
