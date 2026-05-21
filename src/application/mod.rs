@@ -99,8 +99,9 @@ impl Application {
         
         // Send initial startup commands
         let _ = self.bridge.send(BridgeCommand::GetAllDevices);
+        let _ = self.bridge.send(BridgeCommand::ListConnections);
         let _ = self.bridge.send(BridgeCommand::GetActiveConnections);
-        self.startup_pending = 2;
+        self.startup_pending = 3;
         
         let rx = self.message_rx.take().unwrap();
 
@@ -156,9 +157,57 @@ impl Application {
                 let _ = self.bridge.send(BridgeCommand::ListConnections);
                 return;
             }
-            Message::AuthSubmitted { password: _, autoconnect: _ } => {
+            Message::AuthSubmitted { password, autoconnect: _ } => {
                 // TODO: Implement proper connection creation and activation
-                // For now, just close the auth dialog
+                // For now, just close the auth dialog and send AddAndActivateConnection
+                let _ = self.bridge.send(BridgeCommand::AddAndActivateConnection {
+                    settings: crate::backend::types::ConnectionSettings {
+                        common: crate::backend::types::CommonSettings {
+                            name: "wifi-connection".to_string(),
+                            uuid: uuid::Uuid::new_v4(),
+                            autoconnect: true,
+                            interface_name: None,
+                            cloned_mac: None,
+                            mtu: None,
+                            metered: None,
+                            zone: None,
+                        },
+                        connection_type: crate::backend::types::ConnectionTypeSettings::Wifi {
+                            ssid: vec![], // TODO: extract from auth dialog
+                            mode: crate::backend::types::WifiMode::Infra,
+                            bssid: None,
+                            band: None,
+                            channel: None,
+                            security: crate::backend::types::WifiSecuritySettings::WpaPsk {
+                                version: crate::backend::types::WpaVersion::Wpa2,
+                                password: password.clone(),
+                            },
+                            hidden: false,
+                            powersave: None,
+                        },
+                        ipv4: crate::backend::types::IpSettings {
+                            method: crate::backend::types::IpMethod::Auto,
+                            addresses: vec![],
+                            dns: vec![],
+                            gateway: None,
+                            search_domains: vec![],
+                            routes: vec![],
+                            never_default: false,
+                            ignore_auto_dns: false,
+                        },
+                        ipv6: crate::backend::types::IpSettings {
+                            method: crate::backend::types::IpMethod::Auto,
+                            addresses: vec![],
+                            dns: vec![],
+                            gateway: None,
+                            search_domains: vec![],
+                            routes: vec![],
+                            never_default: false,
+                            ignore_auto_dns: false,
+                        },
+                    },
+                    interface: None, // TODO: get from context
+                });
                 self.pane.update(&self.context, Message::FinishAuthentication);
                 return;
             }
@@ -181,13 +230,25 @@ impl Application {
                                 let _ = self.bridge.send(BridgeCommand::GetAccessPoints {
                                     interface: device.interface.clone(),
                                 });
+                                self.startup_pending += 1; // Increment for each AP request
                             }
                         }
                     }
                     crate::backend::bridge::BridgeResult::ActiveConnections(_) => {
                         self.startup_pending = self.startup_pending.saturating_sub(1);
                     }
+                    crate::backend::bridge::BridgeResult::Connections(_) => {
+                        self.startup_pending = self.startup_pending.saturating_sub(1);
+                    }
+                    crate::backend::bridge::BridgeResult::AccessPoints(_) => {
+                        self.startup_pending = self.startup_pending.saturating_sub(1);
+                    }
                     _ => {}
+                }
+                
+                // Check if startup is complete
+                if self.startup_pending == 0 {
+                    let _ = self.context.message.send(Message::FinishLoading);
                 }
                 
                 // Forward to pane for UI updates

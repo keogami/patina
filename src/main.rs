@@ -95,7 +95,7 @@ fn main() -> anyhow::Result<()> {
         });
         
         // Create backend bridge
-        let bridge = Arc::new(BackendBridge::new(backend, message_tx.clone()));
+        let bridge = Arc::new(BackendBridge::new(backend, (*message_tx).clone()));
         
         // Create and run application
         let application = Application::new(rich_context, bridge, message_tx, message_rx);

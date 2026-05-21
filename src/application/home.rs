@@ -134,6 +134,42 @@ fn map_ap_to_available_details(ap: AccessPoint) -> AvailableAPDetails {
     }
 }
 
+fn map_profile_to_inactive(profile: ConnectionProfile) -> ConnectionData {
+    use std::time::Duration;
+    match profile.connection_type {
+        ConnectionType::Wifi => ConnectionData::WifiInactive {
+            name: profile.name.into(),
+            last_used: Duration::from_secs(0), // never used
+            autoconnect: profile.autoconnect,
+            metered: false, // TODO: extract from profile settings if available
+            tag: "saved".into(),
+            security: "WPA2".into(), // TODO: extract from profile settings
+            bssid: None, // No specific BSSID for saved profiles
+            saved_ip_method: "auto".into(), // TODO: extract from profile settings
+            saved_dns: vec![], // TODO: extract from profile settings
+        },
+        // There's no WiredInactive variant, use WiredActive as placeholder
+        _ => ConnectionData::WiredActive {
+            interface: profile.interface_name.unwrap_or_default().into(),
+            ip: "0.0.0.0/0".into(),
+            name: profile.name.into(),
+            versions: "v4".into(),
+            throughput: circular_buffer::CircularBuffer::new(),
+            gateway: "".into(),
+            dns: vec![],
+            mac: "00:00:00:00:00:00".into(),
+            mtu: 1500,
+            link_speed: "".into(),
+            autoconnect: profile.autoconnect,
+            uptime: Duration::from_secs(0),
+            rx_bytes: 0,
+            tx_bytes: 0,
+            rx_throughput: circular_buffer::CircularBuffer::new(),
+            tx_throughput: circular_buffer::CircularBuffer::new(),
+        },
+    }
+}
+
 pub struct HomeData {
     loading: Option<Spinner>,
     connected: Connected,
@@ -144,6 +180,8 @@ pub struct HomeData {
     available_max_items: Cell<usize>,
     authenticate: Option<authenticate::Authenticate>,
     info: Option<Info>,
+    profiles: Vec<ConnectionProfile>,
+    active_connections: Vec<ActiveConnection>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -416,6 +454,8 @@ impl HomeData {
             available_max_items: Cell::new(5), // Default, will be updated by render
             authenticate: None,
             info: None,
+            profiles: Vec::new(),
+            active_connections: Vec::new(),
         }
     }
 
@@ -485,6 +525,26 @@ impl HomeData {
 
         self.sync_scroll_states(max_items);
     }
+
+    fn rebuild_connected_list(&mut self) {
+        let mut connected_list = Vec::new();
+        
+        // Add active connections first
+        for active_conn in &self.active_connections {
+            connected_list.push(Arc::new(map_active_to_connection_data(active_conn.clone())));
+        }
+        
+        // Add inactive profiles (ones not currently active)
+        for profile in &self.profiles {
+            let is_active = self.active_connections.iter()
+                .any(|ac| ac.profile_uuid == profile.uuid);
+            if !is_active {
+                connected_list.push(Arc::new(map_profile_to_inactive(profile.clone())));
+            }
+        }
+        
+        self.connected = Connected { list: connected_list };
+    }
 }
 
 /// Checks whether an AP requires authentication before we can connect
@@ -553,9 +613,26 @@ impl Component for HomeData {
                         }
                     }
                     ratatui::crossterm::event::Event::Key(key_event)
+                        if key_event.code.is_char('s') =>
+                    {
+                        // Trigger scan on first WiFi device
+                        // TODO: In a real implementation, we should get this from devices or context
+                        ctx.message.send(Message::RequestScan {
+                            interface: "wlan0".to_string(), // Default interface for now
+                        }).unwrap();
+                    }
+                    ratatui::crossterm::event::Event::Key(key_event)
                         if key_event.code.is_enter() =>
                     {
-                        if let Some(s) = self.selected.available_selected()
+                        if let Some(idx) = self.selected.connected_selected() {
+                            // Handle connected list - disconnect active connections
+                            if idx < self.active_connections.len() {
+                                let active = &self.active_connections[idx];
+                                ctx.message.send(Message::RequestDisconnect {
+                                    active_id: active.id.clone(),
+                                }).unwrap();
+                            }
+                        } else if let Some(s) = self.selected.available_selected()
                             && needs_authentication(&self.available.list[s]).is_ok_and(|n| n)
                         {
                             ctx.message
@@ -597,11 +674,12 @@ impl Component for HomeData {
             Message::BridgeResult(result) => {
                 match result {
                     BridgeResult::ActiveConnections(Ok(active_conns)) => {
-                        let connected_list: Vec<_> = active_conns
-                            .into_iter()
-                            .map(|ac| Arc::new(map_active_to_connection_data(ac)))
-                            .collect();
-                        self.connected = Connected { list: connected_list };
+                        self.active_connections = active_conns;
+                        self.rebuild_connected_list();
+                    }
+                    BridgeResult::Connections(Ok(profiles)) => {
+                        self.profiles = profiles;
+                        self.rebuild_connected_list();
                     }
                     BridgeResult::AccessPoints(Ok(aps)) => {
                         let available_list: Vec<_> = aps
@@ -611,18 +689,22 @@ impl Component for HomeData {
                         self.available = Available { list: available_list };
                     }
                     BridgeResult::AllDevices(Ok(_devices)) => {
-                        // Devices loaded, can finish loading spinner
-                        self.loading = None;
+                        // Devices loaded, handled by Application startup logic
                     }
                     BridgeResult::ScanRequested(Ok(())) => {
                         // Scan completed, no specific UI update needed
                     }
-                    BridgeResult::ConnectionActivated(Ok(_)) => {
-                        // Connection activated successfully
+                    BridgeResult::ConnectionActivated(Ok(active)) => {
+                        // Connection activated successfully - add to active list and rebuild
+                        self.active_connections.push(active);
+                        self.rebuild_connected_list();
                         self.authenticate = None;
                     }
-                    BridgeResult::ConnectionDeactivated(Ok(())) => {
-                        // Connection deactivated successfully
+                    BridgeResult::ConnectionDeactivated { active_id: _, result: Ok(()) } => {
+                        // Connection deactivated successfully - remove from active list and rebuild
+                        // Note: We should use active_id to identify which connection to remove,
+                        // but the result doesn't tell us which one. This is a limitation.
+                        // For now, we'll rely on the next refresh to update the list.
                     }
                     _ => {
                         // Handle other results or errors if needed

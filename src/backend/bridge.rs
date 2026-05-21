@@ -1,9 +1,13 @@
 use std::collections::HashMap;
-use std::sync::{Arc, mpsc};
+use std::sync::Arc;
+
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::backend::{types::*, NetworkManagerBackend};
 use crate::application::component::Message;
+use crate::backend::types::*;
+use crate::backend::NetworkManagerBackend;
 
 /// Cloneable error type for bridge results
 #[derive(Debug, Clone)]
@@ -82,7 +86,7 @@ pub enum BridgeResult {
     ActiveConnections(BridgeResultType<Vec<ActiveConnection>>),
     ConnectionByUuid(BridgeResultType<ConnectionProfile>),
     ConnectionActivated(BridgeResultType<ActiveConnection>),
-    ConnectionDeactivated(BridgeResultType<()>),
+    ConnectionDeactivated { active_id: String, result: BridgeResultType<()> },
     DeviceDisconnected(BridgeResultType<()>),
     ConnectionAddedAndActivated(BridgeResultType<ActiveConnection>),
     Secrets(BridgeResultType<HashMap<String, String>>),
@@ -124,108 +128,409 @@ pub enum BridgeResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SubscriptionHandle(pub u64);
 
-/// Bridge between UI thread and backend thread
+/// Bridge between UI thread and async backend.
+///
+/// Spawns a single tokio coordinator task that dispatches each command
+/// as a detached child tokio task. Subscriptions are cancellable.
+#[derive(Clone)]
 pub struct BackendBridge {
-    command_tx: mpsc::Sender<BridgeCommand>,
+    cmd_tx: mpsc::UnboundedSender<BridgeCommand>,
 }
 
 impl BackendBridge {
-    pub fn new<B: NetworkManagerBackend + Send + 'static>(
+    pub fn new<B: NetworkManagerBackend>(
         backend: B,
-        ui_tx: Arc<mpsc::Sender<Message>>,
+        ui_tx: std::sync::mpsc::Sender<Message>,
     ) -> Self {
-        let (command_tx, command_rx) = mpsc::channel::<BridgeCommand>();
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
 
-        // Spawn backend thread
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("Failed to build tokio runtime in bridge thread");
+        tokio::spawn(async move {
+            let mut subscriptions: HashMap<SubscriptionHandle, CancellationToken> = HashMap::new();
+            let mut next_handle: u64 = 0;
+            let ui_tx = Arc::new(ui_tx);
 
-            rt.block_on(async {
-                for command in command_rx {
-                    let result = Self::handle_command(&backend, command).await;
-                    if let Err(e) = ui_tx.send(Message::BridgeResult(result)) {
-                        log::error!("Failed to send bridge result to UI: {}", e);
-                        break;
+            while let Some(cmd) = cmd_rx.recv().await {
+                match cmd {
+                    // ── One-shot discovery ──
+                    BridgeCommand::GetAllDevices => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.get_all_devices().await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::AllDevices(res)));
+                        });
+                    }
+                    BridgeCommand::GetDeviceByInterface { interface } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.get_device_by_interface(&interface)
+                                .await
+                                .map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::DeviceByInterface(res)));
+                        });
+                    }
+                    BridgeCommand::GetAccessPoints { interface } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.get_access_points(&interface)
+                                .await
+                                .map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::AccessPoints(res)));
+                        });
+                    }
+                    BridgeCommand::RequestScan { interface } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.request_scan(&interface).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::ScanRequested(res)));
+                        });
+                    }
+
+                    // ── One-shot connection control ──
+                    BridgeCommand::ListConnections => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.list_connections().await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::Connections(res)));
+                        });
+                    }
+                    BridgeCommand::GetActiveConnections => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.get_active_connections().await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::ActiveConnections(res)));
+                        });
+                    }
+                    BridgeCommand::GetConnectionByUuid { uuid } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.get_connection_by_uuid(&uuid).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionByUuid(res)));
+                        });
+                    }
+                    BridgeCommand::ActivateConnection { uuid, interface } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.activate_connection(&uuid, interface.as_deref())
+                                .await
+                                .map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionActivated(res)));
+                        });
+                    }
+                    BridgeCommand::DeactivateConnection { active_id } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        let id = active_id.clone();
+                        tokio::spawn(async move {
+                            let res = b.deactivate_connection(&active_id)
+                                .await
+                                .map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionDeactivated {
+                                active_id: id,
+                                result: res,
+                            }));
+                        });
+                    }
+                    BridgeCommand::DisconnectDevice { interface } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.disconnect_device(&interface).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::DeviceDisconnected(res)));
+                        });
+                    }
+                    BridgeCommand::AddAndActivateConnection { settings, interface } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.add_and_activate_connection(&settings, interface.as_deref())
+                                .await
+                                .map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionAddedAndActivated(res)));
+                        });
+                    }
+                    BridgeCommand::GetSecrets { uuid, setting_name } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.get_secrets(&uuid, &setting_name).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::Secrets(res)));
+                        });
+                    }
+
+                    // ── Configuration ──
+                    BridgeCommand::GetSettings { uuid } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.get_settings(&uuid).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::Settings(res)));
+                        });
+                    }
+                    BridgeCommand::UpdateConnection { uuid, settings } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.update_connection(&uuid, &settings).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionUpdated(res)));
+                        });
+                    }
+                    BridgeCommand::AddConnection { settings } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.add_connection(&settings).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionAdded(res)));
+                        });
+                    }
+                    BridgeCommand::DeleteConnection { uuid } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.delete_connection(&uuid).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionDeleted(res)));
+                        });
+                    }
+
+                    // ── Global state ──
+                    BridgeCommand::GetGlobalState => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.get_global_state().await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::GlobalState(res)));
+                        });
+                    }
+                    BridgeCommand::SetNetworkingEnabled { enabled } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.set_networking_enabled(enabled).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::NetworkingEnabledSet(res)));
+                        });
+                    }
+                    BridgeCommand::SetWirelessEnabled { enabled } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.set_wireless_enabled(enabled).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::WirelessEnabledSet(res)));
+                        });
+                    }
+                    BridgeCommand::SetWwanEnabled { enabled } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.set_wwan_enabled(enabled).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::WwanEnabledSet(res)));
+                        });
+                    }
+                    BridgeCommand::SaveHostname { hostname } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.save_hostname(&hostname).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::HostnameSaved(res)));
+                        });
+                    }
+
+                    // ── Device settings ──
+                    BridgeCommand::SetDeviceManaged { interface, managed } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.set_device_managed(&interface, managed)
+                                .await
+                                .map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::DeviceManagedSet(res)));
+                        });
+                    }
+                    BridgeCommand::SetDeviceAutoconnect { interface, autoconnect } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.set_device_autoconnect(&interface, autoconnect)
+                                .await
+                                .map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::DeviceAutoconnectSet(res)));
+                        });
+                    }
+
+                    // ── Stats ──
+                    BridgeCommand::GetDeviceStats { interface } => {
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            let res = b.get_device_stats(&interface).await.map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(BridgeResult::DeviceStats(res)));
+                        });
+                    }
+
+                    // ── Subscriptions ──
+                    BridgeCommand::SubscribeDeviceEvents => {
+                        let handle = SubscriptionHandle(next_handle);
+                        next_handle += 1;
+                        let token = CancellationToken::new();
+                        let child_token = token.clone();
+                        subscriptions.insert(handle, token);
+
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            match b.subscribe_device_events().await {
+                                Ok(mut rx) => {
+                                    let _ = tx.send(Message::BridgeResult(
+                                        BridgeResult::DeviceEventsSubscribed(Ok(handle)),
+                                    ));
+                                    loop {
+                                        tokio::select! {
+                                            _ = child_token.cancelled() => break,
+                                            Some(ev) = rx.recv() => {
+                                                let _ = tx.send(Message::BridgeResult(
+                                                    BridgeResult::DeviceEvent(ev),
+                                                ));
+                                            }
+                                            else => break,
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::warn!("subscribe_device_events failed: {}", e);
+                                    let _ = tx.send(Message::BridgeResult(
+                                        BridgeResult::DeviceEventsSubscribed(Err(BridgeError::from(e))),
+                                    ));
+                                }
+                            }
+                        });
+                    }
+                    BridgeCommand::SubscribeApEvents { interface } => {
+                        let handle = SubscriptionHandle(next_handle);
+                        next_handle += 1;
+                        let token = CancellationToken::new();
+                        let child_token = token.clone();
+                        subscriptions.insert(handle, token);
+
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            match b.subscribe_ap_events(&interface).await {
+                                Ok(mut rx) => {
+                                    let _ = tx.send(Message::BridgeResult(
+                                        BridgeResult::ApEventsSubscribed(Ok(handle)),
+                                    ));
+                                    loop {
+                                        tokio::select! {
+                                            _ = child_token.cancelled() => break,
+                                            Some(ev) = rx.recv() => {
+                                                let _ = tx.send(Message::BridgeResult(
+                                                    BridgeResult::ApEvent(ev),
+                                                ));
+                                            }
+                                            else => break,
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::warn!("subscribe_ap_events failed: {}", e);
+                                    let _ = tx.send(Message::BridgeResult(
+                                        BridgeResult::ApEventsSubscribed(Err(BridgeError::from(e))),
+                                    ));
+                                }
+                            }
+                        });
+                    }
+                    BridgeCommand::SubscribeProfileEvents => {
+                        let handle = SubscriptionHandle(next_handle);
+                        next_handle += 1;
+                        let token = CancellationToken::new();
+                        let child_token = token.clone();
+                        subscriptions.insert(handle, token);
+
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            match b.subscribe_profile_events().await {
+                                Ok(mut rx) => {
+                                    let _ = tx.send(Message::BridgeResult(
+                                        BridgeResult::ProfileEventsSubscribed(Ok(handle)),
+                                    ));
+                                    loop {
+                                        tokio::select! {
+                                            _ = child_token.cancelled() => break,
+                                            Some(ev) = rx.recv() => {
+                                                let _ = tx.send(Message::BridgeResult(
+                                                    BridgeResult::ProfileEvent(ev),
+                                                ));
+                                            }
+                                            else => break,
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::warn!("subscribe_profile_events failed: {}", e);
+                                    let _ = tx.send(Message::BridgeResult(
+                                        BridgeResult::ProfileEventsSubscribed(Err(BridgeError::from(e))),
+                                    ));
+                                }
+                            }
+                        });
+                    }
+                    BridgeCommand::SubscribeActiveEvents => {
+                        let handle = SubscriptionHandle(next_handle);
+                        next_handle += 1;
+                        let token = CancellationToken::new();
+                        let child_token = token.clone();
+                        subscriptions.insert(handle, token);
+
+                        let b = backend.clone();
+                        let tx = ui_tx.clone();
+                        tokio::spawn(async move {
+                            match b.subscribe_active_events().await {
+                                Ok(mut rx) => {
+                                    let _ = tx.send(Message::BridgeResult(
+                                        BridgeResult::ActiveEventsSubscribed(Ok(handle)),
+                                    ));
+                                    loop {
+                                        tokio::select! {
+                                            _ = child_token.cancelled() => break,
+                                            Some(ev) = rx.recv() => {
+                                                let _ = tx.send(Message::BridgeResult(
+                                                    BridgeResult::ActiveEvent(ev),
+                                                ));
+                                            }
+                                            else => break,
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::warn!("subscribe_active_events failed: {}", e);
+                                    let _ = tx.send(Message::BridgeResult(
+                                        BridgeResult::ActiveEventsSubscribed(Err(BridgeError::from(e))),
+                                    ));
+                                }
+                            }
+                        });
+                    }
+                    BridgeCommand::Unsubscribe { handle } => {
+                        if let Some(token) = subscriptions.remove(&handle) {
+                            token.cancel();
+                        }
                     }
                 }
-            });
+            }
         });
 
-        Self { command_tx }
+        Self { cmd_tx }
     }
 
-    pub fn send(&self, command: BridgeCommand) -> Result<(), BridgeError> {
-        self.command_tx
-            .send(command)
-            .map_err(|_| BridgeError {
-                message: "Bridge channel closed".to_string(),
-            })
-    }
-
-    async fn handle_command<B: NetworkManagerBackend>(
-        backend: &B,
-        command: BridgeCommand,
-    ) -> BridgeResult {
-        match command {
-            BridgeCommand::GetAllDevices => {
-                let result = backend.get_all_devices().await.map_err(BridgeError::from);
-                BridgeResult::AllDevices(result)
-            }
-            BridgeCommand::GetActiveConnections => {
-                let result = backend.get_active_connections().await.map_err(BridgeError::from);
-                BridgeResult::ActiveConnections(result)
-            }
-            BridgeCommand::GetAccessPoints { interface } => {
-                let result = backend
-                    .get_access_points(&interface)
-                    .await
-                    .map_err(BridgeError::from);
-                BridgeResult::AccessPoints(result)
-            }
-            BridgeCommand::RequestScan { interface } => {
-                let result = backend
-                    .request_scan(&interface)
-                    .await
-                    .map_err(BridgeError::from);
-                BridgeResult::ScanRequested(result)
-            }
-            BridgeCommand::ListConnections => {
-                let result = backend.list_connections().await.map_err(BridgeError::from);
-                BridgeResult::Connections(result)
-            }
-            BridgeCommand::ActivateConnection { uuid, interface } => {
-                let result = backend
-                    .activate_connection(&uuid, interface.as_deref())
-                    .await
-                    .map_err(BridgeError::from);
-                BridgeResult::ConnectionActivated(result)
-            }
-            BridgeCommand::DeactivateConnection { active_id } => {
-                let result = backend
-                    .deactivate_connection(&active_id)
-                    .await
-                    .map_err(BridgeError::from);
-                BridgeResult::ConnectionDeactivated(result)
-            }
-            BridgeCommand::AddAndActivateConnection { settings, interface } => {
-                let result = backend
-                    .add_and_activate_connection(&settings, interface.as_deref())
-                    .await
-                    .map_err(BridgeError::from);
-                BridgeResult::ConnectionAddedAndActivated(result)
-            }
-            // Add other command handlers as needed
-            _ => {
-                // For unimplemented commands, return a placeholder error
-                let error = BridgeError {
-                    message: "Command not yet implemented".to_string(),
-                };
-                // Return appropriate result variant based on command type
-                BridgeResult::AllDevices(Err(error))
-            }
-        }
+    pub fn send(&self, cmd: BridgeCommand) {
+        let _ = self.cmd_tx.send(cmd);
     }
 }
