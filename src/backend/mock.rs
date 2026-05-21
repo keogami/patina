@@ -11,9 +11,44 @@ use crate::backend::types::*;
 #[derive(Clone)]
 pub struct MockBackend(Arc<Mutex<MockState>>);
 
+/// Policy for how `add_and_activate_connection` (new connections with password)
+/// should behave.  Existing saved-profile activation always succeeds.
+#[derive(Clone, Default)]
+pub enum AuthConfig {
+    #[default]
+    AlwaysAccept,
+    AlwaysReject { message: String },
+    Random { pass_rate: f64 },
+}
+
+// Manual Default impl replaced with derive above.
+
+/// Iterator-driven ring of AP scan snapshots.
+struct ApSnapshotRing {
+    sets: Vec<Vec<AccessPoint>>,
+    index: usize,
+}
+
+impl ApSnapshotRing {
+    fn current(&self) -> &[AccessPoint] {
+        &self.sets[self.index]
+    }
+
+    /// Advance to the next snapshot, apply ±5 signal wobble, and return the result.
+    fn advance(&mut self) -> Vec<AccessPoint> {
+        self.index = (self.index + 1) % self.sets.len();
+        let mut aps = self.sets[self.index].clone();
+        for ap in &mut aps {
+            let delta = (rand::random::<i8>() % 10) as i16;
+            ap.strength = (ap.strength as i16 + delta).clamp(0, 100) as u8;
+        }
+        aps
+    }
+}
+
 struct MockState {
     devices: Vec<Device>,
-    access_points: HashMap<String, Vec<AccessPoint>>,
+    ap_ring: ApSnapshotRing,
     saved_connections: Vec<ConnectionProfile>,
     connection_settings: HashMap<Uuid, ConnectionSettings>,
     active_connections: Vec<ActiveConnection>,
@@ -26,18 +61,69 @@ struct MockState {
     active_event_txs: Vec<mpsc::UnboundedSender<ActiveEvent>>,
     global_state: GlobalState,
     hostname: String,
+    auth_config: AuthConfig,
+}
+
+/// Build a rotated AP with signal wobble.
+#[allow(clippy::too_many_arguments)]
+fn ap(ssid: &[u8], bssid: &str, strength: u8, freq: u32, ch: u32, bw: u32, bitrate: u32, sec: SecurityType, last: u32) -> AccessPoint {
+    AccessPoint {
+        ssid: ssid.to_vec(),
+        bssid: bssid.into(),
+        strength,
+        frequency: freq,
+        channel: ch,
+        bandwidth: bw,
+        max_bitrate: bitrate,
+        security: sec,
+        wps: false,
+        mode: WifiMode::Infra,
+        last_seen: last,
+    }
 }
 
 impl MockBackend {
     pub fn new() -> Self {
-        let mut access_points = HashMap::new();
-        access_points.insert("wlan0".into(), vec![
-            AccessPoint { ssid: b"Overcast-5G".to_vec(), bssid: "A4:2B:B0:FE:31:9C".into(), strength: 82, frequency: 5220, channel: 44, bandwidth: 80, max_bitrate: 650_000, security: SecurityType::WpaPsk { version: WpaVersion::Wpa2 }, wps: false, mode: WifiMode::Infra, last_seen: 0 },
-            AccessPoint { ssid: b"Acme-Corp".to_vec(), bssid: "88:3D:24:17:02:A1".into(), strength: 71, frequency: 5750, channel: 149, bandwidth: 80, max_bitrate: 867_000, security: SecurityType::WpaEnterprise { version: WpaVersion::Wpa2 }, wps: false, mode: WifiMode::Infra, last_seen: 5 },
-            AccessPoint { ssid: b"FiberLink_9A82".to_vec(), bssid: "1C:83:41:9A:82:00".into(), strength: 58, frequency: 6130, channel: 37, bandwidth: 160, max_bitrate: 1_201_000, security: SecurityType::WpaPsk { version: WpaVersion::Wpa3 }, wps: false, mode: WifiMode::Infra, last_seen: 12 },
-            AccessPoint { ssid: b"xfinitywifi".to_vec(), bssid: "0C:54:A5:88:2B:77".into(), strength: 42, frequency: 2412, channel: 1, bandwidth: 20, max_bitrate: 150_000, security: SecurityType::Open, wps: false, mode: WifiMode::Infra, last_seen: 30 },
-            AccessPoint { ssid: b"TP-Link_5544".to_vec(), bssid: "E4:95:6E:55:44:A0".into(), strength: 28, frequency: 2437, channel: 6, bandwidth: 20, max_bitrate: 300_000, security: SecurityType::WpaPsk { version: WpaVersion::Wpa2 }, wps: false, mode: WifiMode::Infra, last_seen: 60 },
-        ]);
+        Self::with_auth_config(AuthConfig::default())
+    }
+
+    pub fn with_auth_config(auth_config: AuthConfig) -> Self {
+        let wpa2 = |v| SecurityType::WpaPsk { version: v };
+        let wpa2e = |v| SecurityType::WpaEnterprise { version: v };
+
+        let s0 = vec![
+            ap(b"Overcast-5G", "A4:2B:B0:FE:31:9C", 82, 5220, 44, 80, 650_000, wpa2(WpaVersion::Wpa2), 0),
+            ap(b"Acme-Corp", "88:3D:24:17:02:A1", 71, 5750, 149, 80, 867_000, wpa2e(WpaVersion::Wpa2), 5),
+            ap(b"FiberLink_9A82", "1C:83:41:9A:82:00", 58, 6130, 37, 160, 1_201_000, wpa2(WpaVersion::Wpa3), 12),
+            ap(b"xfinitywifi", "0C:54:A5:88:2B:77", 42, 2412, 1, 20, 150_000, SecurityType::Open, 30),
+            ap(b"TP-Link_5544", "E4:95:6E:55:44:A0", 28, 2437, 6, 20, 300_000, wpa2(WpaVersion::Wpa2), 60),
+        ];
+        let s1 = vec![
+            ap(b"Overcast-5G", "A4:2B:B0:FE:31:9C", 78, 5220, 44, 80, 650_000, wpa2(WpaVersion::Wpa2), 2),
+            ap(b"Acme-Corp", "88:3D:24:17:02:A1", 74, 5750, 149, 80, 867_000, wpa2e(WpaVersion::Wpa2), 7),
+            ap(b"FiberLink_9A82", "1C:83:41:9A:82:00", 62, 6130, 37, 160, 1_201_000, wpa2(WpaVersion::Wpa3), 14),
+            ap(b"xfinitywifi", "0C:54:A5:88:2B:77", 45, 2412, 1, 20, 150_000, SecurityType::Open, 32),
+            // TP-Link gone
+        ];
+        let s2 = vec![
+            ap(b"Overcast-5G", "A4:2B:B0:FE:31:9C", 85, 5220, 44, 80, 650_000, wpa2(WpaVersion::Wpa2), 1),
+            ap(b"Acme-Corp", "88:3D:24:17:02:A1", 68, 5750, 149, 80, 867_000, wpa2e(WpaVersion::Wpa2), 6),
+            ap(b"FiberLink_9A82", "1C:83:41:9A:82:00", 55, 6130, 37, 160, 1_201_000, wpa2(WpaVersion::Wpa3), 13),
+            // xfinitywifi gone
+            ap(b"TP-Link_5544", "E4:95:6E:55:44:A0", 31, 2437, 6, 20, 300_000, wpa2(WpaVersion::Wpa2), 61),
+        ];
+        let s3 = vec![
+            ap(b"Overcast-5G", "A4:2B:B0:FE:31:9C", 80, 5220, 44, 80, 650_000, wpa2(WpaVersion::Wpa2), 3),
+            ap(b"Acme-Corp", "88:3D:24:17:02:A1", 70, 5750, 149, 80, 867_000, wpa2e(WpaVersion::Wpa2), 8),
+            ap(b"FiberLink_9A82", "1C:83:41:9A:82:00", 60, 6130, 37, 160, 1_201_000, wpa2(WpaVersion::Wpa3), 15),
+            ap(b"xfinitywifi", "0C:54:A5:88:2B:77", 40, 2412, 1, 20, 150_000, SecurityType::Open, 33),
+            ap(b"TP-Link_5544", "E4:95:6E:55:44:A0", 25, 2437, 6, 20, 300_000, wpa2(WpaVersion::Wpa2), 62),
+        ];
+
+        let ap_ring = ApSnapshotRing {
+            sets: vec![s0, s1, s2, s3],
+            index: 0,
+        };
 
         let wlan0_uuid = Uuid::new_v4();
         let eth0_uuid = Uuid::new_v4();
@@ -84,7 +170,7 @@ impl MockBackend {
                 Device { interface: "wlan0".into(), ip_interface: Some("wlan0".into()), device_type: DeviceType::Wifi, state: DeviceState::Activated, state_reason: None, managed: true, autoconnect: true, mac_address: "A4:2B:B0:FE:31:9C".into(), mtu: 1500, driver: "iwlwifi".into(), driver_version: "0.1".into() },
                 Device { interface: "eth0".into(), ip_interface: Some("eth0".into()), device_type: DeviceType::Ethernet, state: DeviceState::Activated, state_reason: None, managed: true, autoconnect: true, mac_address: "00:1A:2B:3C:4D:5E".into(), mtu: 1500, driver: "e1000e".into(), driver_version: "0.1".into() },
             ],
-            access_points,
+            ap_ring,
             saved_connections,
             connection_settings,
             active_connections,
@@ -97,6 +183,7 @@ impl MockBackend {
             active_event_txs: Vec::new(),
             global_state,
             hostname: "patina-dev".into(),
+            auth_config,
         };
 
         Self(Arc::new(Mutex::new(state)))
@@ -126,13 +213,12 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
 
     fn get_access_points(
         &self,
-        interface: &str,
+        _interface: &str,
     ) -> impl Future<Output = Result<Vec<AccessPoint>>> + Send {
         let backend = self.clone();
-        let interface = interface.to_string();
         async move {
             let state = backend.0.lock().await;
-            Ok(state.access_points.get(&interface).cloned().unwrap_or_default())
+            Ok(state.ap_ring.current().to_vec())
         }
     }
 
@@ -148,14 +234,10 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             {
                 let mut state = backend.0.lock().await;
                 state.scanning.insert(interface.clone(), false);
-                // Slightly randomize strengths
-                if let Some(aps) = state.access_points.get_mut(&interface) {
-                    for ap in aps.iter_mut() {
-                        let delta = (rand::random::<i8>() % 10) as i16;
-                        ap.strength = (ap.strength as i16 + delta).clamp(0, 100) as u8;
-                    }
-                }
-                // Emit ScanDone to AP subscribers for this interface
+                // Advance the ring to the next snapshot (with wobble baked in).
+                let _ = state.ap_ring.advance();
+
+                // Emit ScanDone to AP subscribers for this interface.
                 if let Some(txs) = state.ap_event_txs.get(&interface) {
                     let event = ApEvent::ScanDone { interface: interface.clone() };
                     for tx in txs.iter() {
@@ -292,6 +374,21 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
         let settings = settings.clone();
         let interface = interface.map(|s| s.to_string());
         async move {
+            // Apply auth policy for new connections only.
+            {
+                let state = backend.0.lock().await;
+                match &state.auth_config {
+                    AuthConfig::AlwaysAccept => {}
+                    AuthConfig::AlwaysReject { message } => {
+                        anyhow::bail!("{}", message);
+                    }
+                    AuthConfig::Random { pass_rate } => {
+                        if rand::random::<f64>() > *pass_rate || *pass_rate <= 0.0 {
+                            anyhow::bail!("wrong password for mock network");
+                        }
+                    }
+                }
+            }
             let profile = backend.add_connection(&settings).await?;
             backend.activate_connection(&profile.uuid, interface.as_deref()).await
         }
@@ -356,15 +453,15 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
                 unsaved: false,
                 filename: Some(format!("/etc/NetworkManager/system-connections/{}.nmconnection", settings.common.name)),
             };
-            
+
             state.saved_connections.push(profile.clone());
             state.connection_settings.insert(profile.uuid, settings);
-            
+
             // Emit event to subscribers
             for tx in state.profile_event_txs.iter() {
                 let _ = tx.send(ProfileEvent::Added(profile.clone()));
             }
-            
+
             Ok(profile)
         }
     }
@@ -661,5 +758,124 @@ mod tests {
         let event = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await;
         assert!(event.is_ok());
         assert!(matches!(event.unwrap(), Some(DeviceEvent::ManagedChanged { interface, managed }) if interface == "wlan0" && !managed));
+    }
+
+    #[tokio::test]
+    async fn mock_ap_ring_advances_on_scan() {
+        let backend = MockBackend::new();
+        let aps0 = backend.get_access_points("wlan0").await.unwrap();
+
+        // Scan advances ring: s0 (5) → s1 (4)
+        backend.request_scan("wlan0").await.unwrap();
+        let aps1 = backend.get_access_points("wlan0").await.unwrap();
+        assert_ne!(aps0.len(), aps1.len(), "AP count should change after scan");
+
+        // Three more scans wrap back to s0 (5)
+        backend.request_scan("wlan0").await.unwrap();
+        backend.request_scan("wlan0").await.unwrap();
+        backend.request_scan("wlan0").await.unwrap();
+        let aps4 = backend.get_access_points("wlan0").await.unwrap();
+        assert_eq!(aps0.len(), aps4.len(), "AP count should cycle back after 4 scans");
+    }
+
+    #[tokio::test]
+    async fn mock_auth_always_reject() {
+        let backend = MockBackend::with_auth_config(
+            AuthConfig::AlwaysReject { message: "bad password".into() }
+        );
+        let settings = ConnectionSettings {
+            common: CommonSettings {
+                name: "FailNet".into(),
+                uuid: Uuid::new_v4(),
+                autoconnect: true,
+                interface_name: None,
+                cloned_mac: None,
+                mtu: None,
+                metered: None,
+                zone: None,
+            },
+            connection_type: ConnectionTypeSettings::Wifi {
+                ssid: b"FailNet".to_vec(),
+                mode: WifiMode::Infra,
+                bssid: None,
+                band: None,
+                channel: None,
+                security: WifiSecuritySettings::WpaPsk { version: WpaVersion::Wpa2, password: "wrong".into() },
+                hidden: false,
+                powersave: None,
+            },
+            ipv4: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
+            ipv6: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
+        };
+        let err = backend.add_and_activate_connection(&settings, None).await.unwrap_err();
+        assert!(err.to_string().contains("bad password"));
+    }
+
+    #[tokio::test]
+    async fn mock_auth_random_eventually_accepts() {
+        // With pass_rate=1.0 it should always succeed.
+        let backend = MockBackend::with_auth_config(
+            AuthConfig::Random { pass_rate: 1.0 }
+        );
+        let settings = ConnectionSettings {
+            common: CommonSettings {
+                name: "SureNet".into(),
+                uuid: Uuid::new_v4(),
+                autoconnect: true,
+                interface_name: None,
+                cloned_mac: None,
+                mtu: None,
+                metered: None,
+                zone: None,
+            },
+            connection_type: ConnectionTypeSettings::Wifi {
+                ssid: b"SureNet".to_vec(),
+                mode: WifiMode::Infra,
+                bssid: None,
+                band: None,
+                channel: None,
+                security: WifiSecuritySettings::WpaPsk { version: WpaVersion::Wpa2, password: "secret".into() },
+                hidden: false,
+                powersave: None,
+            },
+            ipv4: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
+            ipv6: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
+        };
+        let res = backend.add_and_activate_connection(&settings, None).await;
+        assert!(res.is_ok(), "pass_rate=1.0 should always succeed");
+    }
+
+    #[tokio::test]
+    async fn mock_auth_random_eventually_rejects() {
+        // With pass_rate=0.0 it should always fail.
+        let backend = MockBackend::with_auth_config(
+            AuthConfig::Random { pass_rate: 0.0 }
+        );
+        let settings = ConnectionSettings {
+            common: CommonSettings {
+                name: "NeverNet".into(),
+                uuid: Uuid::new_v4(),
+                autoconnect: true,
+                interface_name: None,
+                cloned_mac: None,
+                mtu: None,
+                metered: None,
+                zone: None,
+            },
+            connection_type: ConnectionTypeSettings::Wifi {
+                ssid: b"NeverNet".to_vec(),
+                mode: WifiMode::Infra,
+                bssid: None,
+                band: None,
+                channel: None,
+                security: WifiSecuritySettings::WpaPsk { version: WpaVersion::Wpa2, password: "secret".into() },
+                hidden: false,
+                powersave: None,
+            },
+            ipv4: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
+            ipv6: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
+        };
+        let err = backend.add_and_activate_connection(&settings, None).await.unwrap_err();
+        assert!(err.to_string().contains("wrong password"));
     }
 }
