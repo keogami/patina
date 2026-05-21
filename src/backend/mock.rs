@@ -299,11 +299,39 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
     fn get_secrets(&self, _uuid: &Uuid, _setting_name: &str) -> impl Future<Output = Result<Secrets>> + Send {
         async move { Ok(Secrets::new()) }
     }
-    fn get_settings(&self, _uuid: &Uuid) -> impl Future<Output = Result<ConnectionSettings>> + Send {
-        async move { anyhow::bail!("not yet implemented") }
+    fn get_settings(&self, uuid: &Uuid) -> impl Future<Output = Result<ConnectionSettings>> + Send {
+        let backend = self.clone();
+        let uuid = *uuid;
+        async move {
+            let state = backend.0.lock().await;
+            state.connection_settings.get(&uuid)
+                .cloned()
+                .context("Settings not found")
+        }
     }
-    fn update_connection(&self, _uuid: &Uuid, _settings: &ConnectionSettings) -> impl Future<Output = Result<()>> + Send {
-        async move { anyhow::bail!("not yet implemented") }
+    fn update_connection(&self, uuid: &Uuid, settings: &ConnectionSettings) -> impl Future<Output = Result<()>> + Send {
+        let backend = self.clone();
+        let uuid = *uuid;
+        let settings = settings.clone();
+        async move {
+            let mut state = backend.0.lock().await;
+            if !state.connection_settings.contains_key(&uuid) {
+                anyhow::bail!("Connection settings not found");
+            }
+            let name = settings.common.name.clone();
+            state.connection_settings.insert(uuid, settings);
+
+            // Update profile name if changed
+            if let Some(conn) = state.saved_connections.iter_mut().find(|c| c.uuid == uuid) {
+                conn.name = name;
+                conn.unsaved = true;
+            }
+
+            for tx in state.profile_event_txs.iter() {
+                let _ = tx.send(ProfileEvent::Updated { uuid });
+            }
+            Ok(())
+        }
     }
     fn add_connection(&self, settings: &ConnectionSettings) -> impl Future<Output = Result<ConnectionProfile>> + Send {
         let backend = self.clone();
@@ -340,8 +368,22 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             Ok(profile)
         }
     }
-    fn delete_connection(&self, _uuid: &Uuid) -> impl Future<Output = Result<()>> + Send {
-        async move { anyhow::bail!("not yet implemented") }
+    fn delete_connection(&self, uuid: &Uuid) -> impl Future<Output = Result<()>> + Send {
+        let backend = self.clone();
+        let uuid = *uuid;
+        async move {
+            let mut state = backend.0.lock().await;
+            let idx = state.saved_connections.iter()
+                .position(|c| c.uuid == uuid)
+                .context("Connection not found")?;
+            state.saved_connections.remove(idx);
+            state.connection_settings.remove(&uuid);
+
+            for tx in state.profile_event_txs.iter() {
+                let _ = tx.send(ProfileEvent::Removed { uuid });
+            }
+            Ok(())
+        }
     }
     fn get_global_state(&self) -> impl Future<Output = Result<GlobalState>> + Send {
         let backend = self.clone();
@@ -350,29 +392,66 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             Ok(state.global_state.clone())
         }
     }
-    fn set_networking_enabled(&self, _enabled: bool) -> impl Future<Output = Result<()>> + Send {
-        async move { Ok(()) }
+    fn set_networking_enabled(&self, enabled: bool) -> impl Future<Output = Result<()>> + Send {
+        let backend = self.clone();
+        async move {
+            let mut state = backend.0.lock().await;
+            state.global_state.networking_enabled = enabled;
+            Ok(())
+        }
     }
-    fn set_wireless_enabled(&self, _enabled: bool) -> impl Future<Output = Result<()>> + Send {
-        async move { Ok(()) }
+    fn set_wireless_enabled(&self, enabled: bool) -> impl Future<Output = Result<()>> + Send {
+        let backend = self.clone();
+        async move {
+            let mut state = backend.0.lock().await;
+            state.global_state.wireless_enabled = enabled;
+            Ok(())
+        }
     }
-    fn set_wwan_enabled(&self, _enabled: bool) -> impl Future<Output = Result<()>> + Send {
-        async move { Ok(()) }
+    fn set_wwan_enabled(&self, enabled: bool) -> impl Future<Output = Result<()>> + Send {
+        let backend = self.clone();
+        async move {
+            let mut state = backend.0.lock().await;
+            state.global_state.wwan_enabled = enabled;
+            Ok(())
+        }
     }
     fn save_hostname(&self, hostname: &str) -> impl Future<Output = Result<()>> + Send {
         let backend = self.clone();
         let hostname = hostname.to_string();
         async move {
             let mut state = backend.0.lock().await;
-            state.hostname = hostname;
+            state.global_state.hostname = hostname;
             Ok(())
         }
     }
-    fn set_device_managed(&self, _interface: &str, _managed: bool) -> impl Future<Output = Result<()>> + Send {
-        async move { Ok(()) }
+    fn set_device_managed(&self, interface: &str, managed: bool) -> impl Future<Output = Result<()>> + Send {
+        let backend = self.clone();
+        let interface = interface.to_string();
+        async move {
+            let mut state = backend.0.lock().await;
+            if let Some(dev) = state.devices.iter_mut().find(|d| d.interface == interface) {
+                dev.managed = managed;
+                for tx in state.device_event_txs.iter() {
+                    let _ = tx.send(DeviceEvent::ManagedChanged { interface: interface.clone(), managed });
+                }
+            }
+            Ok(())
+        }
     }
-    fn set_device_autoconnect(&self, _interface: &str, _autoconnect: bool) -> impl Future<Output = Result<()>> + Send {
-        async move { Ok(()) }
+    fn set_device_autoconnect(&self, interface: &str, autoconnect: bool) -> impl Future<Output = Result<()>> + Send {
+        let backend = self.clone();
+        let interface = interface.to_string();
+        async move {
+            let mut state = backend.0.lock().await;
+            if let Some(dev) = state.devices.iter_mut().find(|d| d.interface == interface) {
+                dev.autoconnect = autoconnect;
+                for tx in state.device_event_txs.iter() {
+                    let _ = tx.send(DeviceEvent::AutoconnectChanged { interface: interface.clone(), autoconnect });
+                }
+            }
+            Ok(())
+        }
     }
     fn get_device_stats(&self, interface: &str) -> impl Future<Output = Result<DeviceStats>> + Send {
         let backend = self.clone();
@@ -492,5 +571,70 @@ mod tests {
 
         let found = backend.get_connection_by_uuid(&uuid).await.unwrap();
         assert_eq!(found.uuid, uuid);
+    }
+
+    #[tokio::test]
+    async fn mock_crud_connection() {
+        let backend = MockBackend::new();
+
+        // Add
+        let settings = ConnectionSettings {
+            common: CommonSettings {
+                name: "TestNet".into(),
+                uuid: Uuid::new_v4(),
+                autoconnect: true,
+                interface_name: None,
+                cloned_mac: None,
+                mtu: None,
+                metered: None,
+                zone: None,
+            },
+            connection_type: ConnectionTypeSettings::Wifi {
+                ssid: b"TestNet".to_vec(),
+                mode: WifiMode::Infra,
+                bssid: None,
+                band: None,
+                channel: None,
+                security: WifiSecuritySettings::WpaPsk { version: WpaVersion::Wpa2, password: "secret".into() },
+                hidden: false,
+                powersave: None,
+            },
+            ipv4: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
+            ipv6: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
+        };
+        let profile = backend.add_connection(&settings).await.unwrap();
+        assert_eq!(profile.name, "TestNet");
+
+        // Read back
+        let conns = backend.list_connections().await.unwrap();
+        assert!(conns.iter().any(|c| c.uuid == profile.uuid));
+
+        // Get settings
+        let fetched = backend.get_settings(&profile.uuid).await.unwrap();
+        assert_eq!(fetched.common.name, "TestNet");
+
+        // Update
+        let mut updated = fetched.clone();
+        updated.common.name = "TestNetUpdated".into();
+        backend.update_connection(&profile.uuid, &updated).await.unwrap();
+
+        let fetched2 = backend.get_settings(&profile.uuid).await.unwrap();
+        assert_eq!(fetched2.common.name, "TestNetUpdated");
+
+        // Delete
+        backend.delete_connection(&profile.uuid).await.unwrap();
+        let conns = backend.list_connections().await.unwrap();
+        assert!(!conns.iter().any(|c| c.uuid == profile.uuid));
+    }
+
+    #[tokio::test]
+    async fn mock_global_state() {
+        let backend = MockBackend::new();
+        let state = backend.get_global_state().await.unwrap();
+        assert_eq!(state.hostname, "patina-dev");
+
+        backend.save_hostname("new-host").await.unwrap();
+        let state = backend.get_global_state().await.unwrap();
+        assert_eq!(state.hostname, "new-host");
     }
 }
