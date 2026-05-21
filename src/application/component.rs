@@ -69,6 +69,7 @@ pub enum Message {
     RequestAddAndActivate { settings: ConnectionSettings, interface: Option<String> },
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum Bubble {
     Yes(Message),
     No,

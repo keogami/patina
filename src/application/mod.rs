@@ -98,9 +98,9 @@ impl Application {
         self.setup_event_polling()?;
         
         // Send initial startup commands
-        let _ = self.bridge.send(BridgeCommand::GetAllDevices);
-        let _ = self.bridge.send(BridgeCommand::ListConnections);
-        let _ = self.bridge.send(BridgeCommand::GetActiveConnections);
+        self.bridge.send(BridgeCommand::GetAllDevices);
+        self.bridge.send(BridgeCommand::ListConnections);
+        self.bridge.send(BridgeCommand::GetActiveConnections);
         self.startup_pending = 3;
         
         let rx = self.message_rx.take().unwrap();
@@ -131,34 +131,34 @@ impl Application {
         // Intercept user intent messages and convert to bridge commands
         match &ev {
             Message::RequestConnect { uuid, interface } => {
-                let _ = self.bridge.send(BridgeCommand::ActivateConnection {
+                self.bridge.send(BridgeCommand::ActivateConnection {
                     uuid: *uuid,
                     interface: interface.clone(),
                 });
                 return;
             }
             Message::RequestDisconnect { active_id } => {
-                let _ = self.bridge.send(BridgeCommand::DeactivateConnection {
+                self.bridge.send(BridgeCommand::DeactivateConnection {
                     active_id: active_id.clone(),
                 });
                 return;
             }
             Message::RequestScan { interface } => {
-                let _ = self.bridge.send(BridgeCommand::RequestScan {
+                self.bridge.send(BridgeCommand::RequestScan {
                     interface: interface.clone(),
                 });
                 return;
             }
             Message::RequestDeviceList => {
-                let _ = self.bridge.send(BridgeCommand::GetAllDevices);
+                self.bridge.send(BridgeCommand::GetAllDevices);
                 return;
             }
             Message::RequestConnectionList => {
-                let _ = self.bridge.send(BridgeCommand::ListConnections);
+                self.bridge.send(BridgeCommand::ListConnections);
                 return;
             }
             Message::AuthSubmitted { ssid, password, autoconnect: _ } => {
-                let _ = self.bridge.send(BridgeCommand::AddAndActivateConnection {
+                self.bridge.send(BridgeCommand::AddAndActivateConnection {
                     settings: crate::backend::types::ConnectionSettings {
                         common: crate::backend::types::CommonSettings {
                             name: ssid.clone(),
@@ -210,7 +210,7 @@ impl Application {
                 return;
             }
             Message::RequestAddAndActivate { settings, interface } => {
-                let _ = self.bridge.send(BridgeCommand::AddAndActivateConnection {
+                self.bridge.send(BridgeCommand::AddAndActivateConnection {
                     settings: settings.clone(),
                     interface: interface.clone(),
                 });
@@ -225,7 +225,7 @@ impl Application {
                         // Request access points from WiFi devices
                         for device in devices {
                             if matches!(device.device_type, crate::backend::DeviceType::Wifi) {
-                                let _ = self.bridge.send(BridgeCommand::GetAccessPoints {
+                                self.bridge.send(BridgeCommand::GetAccessPoints {
                                     interface: device.interface.clone(),
                                 });
                                 self.startup_pending += 1; // Increment for each AP request

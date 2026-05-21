@@ -8,7 +8,6 @@ pub mod types;
 pub use types::*;
 
 pub mod bridge;
-pub use bridge::*;
 
 #[cfg(feature = "mock")]
 pub mod mock;
