@@ -26,7 +26,7 @@ use crate::application::{
         ScrollState, Separator, WidgetList, selected_scroll_with_direction,
     },
 };
-use crate::backend::{ConnectionType, ActiveConnection, AccessPoint, SecurityType, WpaVersion::Wpa1, WpaVersion::Wpa2, WpaVersion::Wpa3, NetworkManagerBackend};
+use crate::backend::{bridge::BridgeResult, types::*};
 
 pub mod authenticate;
 pub mod available;
@@ -115,14 +115,14 @@ fn map_ap_to_available_details(ap: AccessPoint) -> AvailableAPDetails {
             SecurityType::Open => "Open".into(),
             SecurityType::Wep => "WEP".into(),
             SecurityType::WpaPsk { version } => match version {
-                Wpa1 => "WPA".into(),
-                Wpa2 => "WPA2".into(),
-                Wpa3 => "WPA3".into(),
+                WpaVersion::Wpa1 => "WPA".into(),
+                WpaVersion::Wpa2 => "WPA2".into(),
+                WpaVersion::Wpa3 => "WPA3".into(),
             },
             SecurityType::WpaEnterprise { version } => match version {
-                Wpa1 => "WPA-E".into(),
-                Wpa2 => "WPA2-E".into(),
-                Wpa3 => "WPA3-E".into(),
+                WpaVersion::Wpa1 => "WPA-E".into(),
+                WpaVersion::Wpa2 => "WPA2-E".into(),
+                WpaVersion::Wpa3 => "WPA3-E".into(),
             },
         },
         frequency: format!("{} GHz", ap.frequency as f32 / 1000.0).into(),
@@ -134,8 +134,7 @@ fn map_ap_to_available_details(ap: AccessPoint) -> AvailableAPDetails {
     }
 }
 
-pub struct HomeData<B: NetworkManagerBackend> {
-    backend: B,
+pub struct HomeData {
     loading: Option<Spinner>,
     connected: Connected,
     available: Available,
@@ -401,49 +400,20 @@ impl Selected {
     }
 }
 
-impl<B: NetworkManagerBackend> HomeData<B> {
-    pub fn new(backend: B, ctx: &RichContext) -> Self {
-        let loading = Spinner::new(SpinnerType::dot(), ctx.fps);
+impl HomeData {
+    pub fn new() -> Self {
         let connected = Connected { list: Vec::new() };
         let available = Available { list: Vec::new() };
         let selected = Selected::None;
 
-        // TODO: right now, when the app starts, no section is selected. change
-        // that to select the very first item in the connection list. of course,
-        // handling the edge cases
-        let message_tx = ctx.message.clone();
-        let backend_clone = backend.clone();
-        tokio::spawn(async move {
-            // Load from backend instead of hardcoded data
-            let devices = backend_clone.get_all_devices().await.unwrap_or_default();
-            let active_conns = backend_clone.get_active_connections().await.unwrap_or_default();
-            let aps = if let Some(wifi) = devices.iter().find(|d| matches!(d.device_type, crate::backend::DeviceType::Wifi)) {
-                backend_clone.get_access_points(&wifi.interface).await.unwrap_or_default()
-            } else {
-                Vec::new()
-            };
-
-            let connected_list: Vec<_> = active_conns.into_iter()
-                .map(|ac| Arc::new(map_active_to_connection_data(ac)))
-                .collect();
-            let _ = message_tx.send(Message::LoadConnected(Connected { list: connected_list }));
-
-            let available_list: Vec<_> = aps.into_iter()
-                .map(|ap| Arc::new(map_ap_to_available_details(ap)))
-                .collect();
-            let _ = message_tx.send(Message::LoadAvailable(Available { list: available_list }));
-            let _ = message_tx.send(Message::FinishLoading);
-        });
-
         Self {
-            backend,
-            loading: Some(loading),
+            loading: Some(Spinner::new(SpinnerType::dot(), 60)), // Default fps, will be updated by tick
             connected,
             available,
             selected,
             connected_scroll_state: ScrollState::new(),
             available_scroll_state: ScrollState::new(),
-            available_max_items: Cell::new(ctx.connection_maxitem),
+            available_max_items: Cell::new(5), // Default, will be updated by render
             authenticate: None,
             info: None,
         }
@@ -522,7 +492,7 @@ fn needs_authentication(_access_point: &AvailableAPDetails) -> anyhow::Result<bo
     Ok(true)
 }
 
-impl<B: NetworkManagerBackend> Component for HomeData<B> {
+impl Component for HomeData {
     fn update(&mut self, ctx: &RichContext, mut ev: Message) -> Bubble {
         if let Some(ref mut auth) = self.authenticate {
             let bubble = auth.update(ctx, ev);
@@ -624,9 +594,44 @@ impl<B: NetworkManagerBackend> Component for HomeData<B> {
             Message::FinishInfo => {
                 self.info = None;
             }
-            // Bridge results and user intents are handled by Application, not Home pane
-            Message::BridgeResult(_)
-            | Message::RequestConnect { .. }
+            Message::BridgeResult(result) => {
+                match result {
+                    BridgeResult::ActiveConnections(Ok(active_conns)) => {
+                        let connected_list: Vec<_> = active_conns
+                            .into_iter()
+                            .map(|ac| Arc::new(map_active_to_connection_data(ac)))
+                            .collect();
+                        self.connected = Connected { list: connected_list };
+                    }
+                    BridgeResult::AccessPoints(Ok(aps)) => {
+                        let available_list: Vec<_> = aps
+                            .into_iter()
+                            .map(|ap| Arc::new(map_ap_to_available_details(ap)))
+                            .collect();
+                        self.available = Available { list: available_list };
+                    }
+                    BridgeResult::AllDevices(Ok(_devices)) => {
+                        // Devices loaded, can finish loading spinner
+                        self.loading = None;
+                    }
+                    BridgeResult::ScanRequested(Ok(())) => {
+                        // Scan completed, no specific UI update needed
+                    }
+                    BridgeResult::ConnectionActivated(Ok(_)) => {
+                        // Connection activated successfully
+                        self.authenticate = None;
+                    }
+                    BridgeResult::ConnectionDeactivated(Ok(())) => {
+                        // Connection deactivated successfully
+                    }
+                    _ => {
+                        // Handle other results or errors if needed
+                        log::debug!("Unhandled bridge result: {:?}", result);
+                    }
+                }
+            }
+            // User intent messages are handled by Application, not Home pane
+            Message::RequestConnect { .. }
             | Message::RequestDisconnect { .. }
             | Message::RequestScan { .. }
             | Message::RequestDeviceList

@@ -1,12 +1,13 @@
 #![allow(clippy::manual_async_fn)]
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::Context;
 use clap::Parser;
 
-use crate::application::{Application, Context as AppContext};
+use crate::application::{Application, Context as AppContext, component::RichContext};
+use crate::backend::bridge::BackendBridge;
 
 mod application;
 mod backend;
@@ -79,7 +80,25 @@ fn main() -> anyhow::Result<()> {
 
     #[cfg(feature = "mock")]
     {
-        let application = Application::new(MockBackend::new(), context);
+        let backend = MockBackend::new();
+        
+        // Create message channel for UI
+        let (message_tx, message_rx) = std::sync::mpsc::channel();
+        let message_tx = std::sync::Arc::new(message_tx);
+        
+        // Create rich context
+        let rich_context = Arc::new(RichContext {
+            log_file: context.log_file,
+            fps: context.fps,
+            message: message_tx.clone(),
+            connection_maxitem: context.connection_maxitem,
+        });
+        
+        // Create backend bridge
+        let bridge = Arc::new(BackendBridge::new(backend, message_tx.clone()));
+        
+        // Create and run application
+        let application = Application::new(rich_context, bridge, message_tx, message_rx);
         application.run()?;
     }
 

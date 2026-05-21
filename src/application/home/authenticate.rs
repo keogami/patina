@@ -62,9 +62,10 @@ impl Component for Authenticate {
             Message::Crossterm(ratatui::crossterm::event::Event::Key(event))
                 if event.code.is_enter() =>
             {
-                // TODO actually do the connect before finishing
-                // - add a spinner to show that something is happening in the background
-                return Bubble::Yes(Message::FinishAuthentication);
+                return Bubble::Yes(Message::AuthSubmitted {
+                    password: self.password.to_string(),
+                    autoconnect: self.autoconnect,
+                });
             }
             Message::Crossterm(ratatui::crossterm::event::Event::Key(event))
                 if event.code.is_backspace() && self.selected_field.is_password() =>

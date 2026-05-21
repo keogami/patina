@@ -13,7 +13,7 @@ use crate::application::{
     home::HomeData,
     theme::PATINA,
 };
-use crate::backend::NetworkManagerBackend;
+use crate::backend::bridge::{BackendBridge, BridgeCommand};
 
 pub mod component;
 mod home;
@@ -22,39 +22,29 @@ pub mod utils;
 
 pub use component::Context;
 
-pub struct Application<B: NetworkManagerBackend> {
-    backend: B,
+pub struct Application {
     context: Arc<RichContext>,
-    pane: Pane<B>,
+    pane: Pane,
     message_tx: Arc<std::sync::mpsc::Sender<Message>>,
     message_rx: Option<std::sync::mpsc::Receiver<Message>>,
+    bridge: Arc<BackendBridge>,
+    startup_pending: u32,
 }
 
-impl<B: NetworkManagerBackend> Application<B> {
+impl Application {
     pub fn new(
-        backend: B,
-        Context {
-            log_file,
-            fps,
-            connection_maxitem,
-        }: Context,
+        context: Arc<RichContext>,
+        bridge: Arc<BackendBridge>,
+        message_tx: Arc<std::sync::mpsc::Sender<Message>>,
+        message_rx: std::sync::mpsc::Receiver<Message>,
     ) -> Self {
-        let (message_tx, message_rx) = std::sync::mpsc::channel();
-        let message_tx = Arc::new(message_tx);
-
-        let context = RichContext {
-            log_file,
-            fps,
-            message: message_tx.clone(),
-            connection_maxitem,
-        };
-
         Self {
-            backend: backend.clone(),
-            pane: Pane::Home(HomeData::new(backend, &context)),
-            context: context.into(),
+            context,
+            pane: Pane::Home(HomeData::new()),
             message_tx,
             message_rx: Some(message_rx),
+            bridge,
+            startup_pending: 0,
         }
     }
 
@@ -106,6 +96,12 @@ impl<B: NetworkManagerBackend> Application<B> {
     /// runs the main loop for the application
     pub fn run(mut self) -> anyhow::Result<()> {
         self.setup_event_polling()?;
+        
+        // Send initial startup commands
+        let _ = self.bridge.send(BridgeCommand::GetAllDevices);
+        let _ = self.bridge.send(BridgeCommand::GetActiveConnections);
+        self.startup_pending = 2;
+        
         let rx = self.message_rx.take().unwrap();
 
         ratatui::run(|term| {
@@ -131,6 +127,77 @@ impl<B: NetworkManagerBackend> Application<B> {
     }
 
     pub fn update(&mut self, ev: Message) {
+        // Intercept user intent messages and convert to bridge commands
+        match &ev {
+            Message::RequestConnect { uuid, interface } => {
+                let _ = self.bridge.send(BridgeCommand::ActivateConnection {
+                    uuid: *uuid,
+                    interface: interface.clone(),
+                });
+                return;
+            }
+            Message::RequestDisconnect { active_id } => {
+                let _ = self.bridge.send(BridgeCommand::DeactivateConnection {
+                    active_id: active_id.clone(),
+                });
+                return;
+            }
+            Message::RequestScan { interface } => {
+                let _ = self.bridge.send(BridgeCommand::RequestScan {
+                    interface: interface.clone(),
+                });
+                return;
+            }
+            Message::RequestDeviceList => {
+                let _ = self.bridge.send(BridgeCommand::GetAllDevices);
+                return;
+            }
+            Message::RequestConnectionList => {
+                let _ = self.bridge.send(BridgeCommand::ListConnections);
+                return;
+            }
+            Message::AuthSubmitted { password: _, autoconnect: _ } => {
+                // TODO: Implement proper connection creation and activation
+                // For now, just close the auth dialog
+                self.pane.update(&self.context, Message::FinishAuthentication);
+                return;
+            }
+            Message::RequestAddAndActivate { settings, interface } => {
+                let _ = self.bridge.send(BridgeCommand::AddAndActivateConnection {
+                    settings: settings.clone(),
+                    interface: interface.clone(),
+                });
+                return;
+            }
+            Message::BridgeResult(result) => {
+                // Track startup completion
+                match result {
+                    crate::backend::bridge::BridgeResult::AllDevices(Ok(devices)) => {
+                        self.startup_pending = self.startup_pending.saturating_sub(1);
+                        
+                        // Request access points from WiFi devices
+                        for device in devices {
+                            if matches!(device.device_type, crate::backend::DeviceType::Wifi) {
+                                let _ = self.bridge.send(BridgeCommand::GetAccessPoints {
+                                    interface: device.interface.clone(),
+                                });
+                            }
+                        }
+                    }
+                    crate::backend::bridge::BridgeResult::ActiveConnections(_) => {
+                        self.startup_pending = self.startup_pending.saturating_sub(1);
+                    }
+                    _ => {}
+                }
+                
+                // Forward to pane for UI updates
+                self.pane.update(&self.context, ev);
+                return;
+            }
+            _ => {}
+        }
+        
+        // Forward all other messages to the pane
         self.pane.update(&self.context, ev);
     }
 
@@ -140,6 +207,6 @@ impl<B: NetworkManagerBackend> Application<B> {
 }
 
 #[enum_dispatch(Component)]
-pub enum Pane<B: NetworkManagerBackend> {
-    Home(HomeData<B>),
+pub enum Pane {
+    Home(HomeData),
 }
