@@ -6,6 +6,7 @@ use clap::Parser;
 use crate::application::{Application, Context as AppContext};
 
 mod application;
+mod backend;
 
 #[cfg(test)]
 mod tests;
