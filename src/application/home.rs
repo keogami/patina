@@ -714,16 +714,13 @@ impl Component for HomeData {
                     }
                 }
             }
-            // User intent messages are handled by Application, not Home pane
-            Message::RequestConnect { .. }
-            | Message::RequestDisconnect { .. }
-            | Message::RequestScan { .. }
-            | Message::RequestDeviceList
-            | Message::RequestConnectionList
-            | Message::AuthSubmitted { .. }
-            | Message::RequestAddAndActivate { .. } => {
-                // These messages should be intercepted by Application before reaching Home
-                // If they reach here, it's likely a design issue, but we'll handle gracefully
+            Message::AuthSubmitted { .. } => {
+                // Bubble up to Application so it can send the bridge command
+                return Bubble::Yes(ev);
+            }
+            _ => {
+                // User intent messages (RequestConnect, RequestScan, etc.) are handled
+                // by Application before reaching Home. If they arrive here, ignore.
             }
         }
 

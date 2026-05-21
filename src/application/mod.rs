@@ -256,14 +256,20 @@ impl Application {
                 }
                 
                 // Forward to pane for UI updates
-                self.pane.update(&self.context, ev);
+                let bubble = self.pane.update(&self.context, ev);
+                if let Bubble::Yes(bubbled) = bubble {
+                    self.update(bubbled);
+                }
                 return;
             }
             _ => {}
         }
         
         // Forward all other messages to the pane
-        self.pane.update(&self.context, ev);
+        let bubble = self.pane.update(&self.context, ev);
+        if let Bubble::Yes(bubbled) = bubble {
+            self.update(bubbled);
+        }
     }
 
     pub fn draw(&mut self, frame: &mut Frame<'_>) {
