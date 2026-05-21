@@ -106,7 +106,7 @@ pub enum BondMode {
     ActiveBackup,
     Xor,
     Broadcast,
-    LACP,
+    Lacp,
     Tlb,
     Alb,
 }

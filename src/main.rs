@@ -1,3 +1,6 @@
+#![allow(clippy::manual_async_fn)]
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 
 use anyhow::Context;
