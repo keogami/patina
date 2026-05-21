@@ -554,22 +554,25 @@ fn needs_authentication(_access_point: &AvailableAPDetails) -> anyhow::Result<bo
 
 impl Component for HomeData {
     fn update(&mut self, ctx: &RichContext, mut ev: Message) -> Bubble {
-        if let Some(ref mut auth) = self.authenticate {
-            let bubble = auth.update(ctx, ev);
-            log::debug!("HOME: overlay returned bubble variant={:?}", std::mem::discriminant(&bubble));
-            match bubble {
-                Bubble::Yes(message) => {
-                    log::info!("HOME: overlay bubbled message variant={:?}", std::mem::discriminant(&message));
-                    ev = message;
+        // Backend results bypass overlays — they are never meant for overlay consumption
+        if !matches!(ev, Message::BridgeResult(_)) {
+            if let Some(ref mut auth) = self.authenticate {
+                let bubble = auth.update(ctx, ev);
+                log::debug!("HOME: overlay returned bubble variant={:?}", std::mem::discriminant(&bubble));
+                match bubble {
+                    Bubble::Yes(message) => {
+                        log::info!("HOME: overlay bubbled message variant={:?}", std::mem::discriminant(&message));
+                        ev = message;
+                    }
+                    Bubble::No => return Bubble::No,
                 }
-                Bubble::No => return Bubble::No,
             }
-        }
-        if let Some(ref mut info) = self.info {
-            let bubble = info.update(ctx, ev);
-            match bubble {
-                Bubble::Yes(message) => ev = message,
-                Bubble::No => return Bubble::No,
+            if let Some(ref mut info) = self.info {
+                let bubble = info.update(ctx, ev);
+                match bubble {
+                    Bubble::Yes(message) => ev = message,
+                    Bubble::No => return Bubble::No,
+                }
             }
         }
 
@@ -676,6 +679,7 @@ impl Component for HomeData {
                 self.info = None;
             }
             Message::BridgeResult(result) => {
+                log::info!("HOME: received BridgeResult variant={:?}", std::mem::discriminant(&result));
                 match result {
                     BridgeResult::ActiveConnections(Ok(active_conns)) => {
                         self.active_connections = active_conns;
