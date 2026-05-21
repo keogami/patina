@@ -624,6 +624,18 @@ impl<B: NetworkManagerBackend> Component for HomeData<B> {
             Message::FinishInfo => {
                 self.info = None;
             }
+            // Bridge results and user intents are handled by Application, not Home pane
+            Message::BridgeResult(_)
+            | Message::RequestConnect { .. }
+            | Message::RequestDisconnect { .. }
+            | Message::RequestScan { .. }
+            | Message::RequestDeviceList
+            | Message::RequestConnectionList
+            | Message::AuthSubmitted { .. }
+            | Message::RequestAddAndActivate { .. } => {
+                // These messages should be intercepted by Application before reaching Home
+                // If they reach here, it's likely a design issue, but we'll handle gracefully
+            }
         }
 
         Bubble::No

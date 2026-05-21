@@ -5,6 +5,10 @@ use std::{
 
 use enum_dispatch::enum_dispatch;
 use ratatui::{Frame, crossterm};
+use uuid::Uuid;
+
+use crate::backend::bridge::BridgeResult;
+use crate::backend::types::ConnectionSettings;
 
 use crate::application::home::{
     available::AvailableAPDetails, connected::ConnectionData, info::InfoTarget,
@@ -51,6 +55,18 @@ pub enum Message {
     Authenticate(AuthenticationData),
     OpenInfo(InfoTarget),
     FinishInfo,
+
+    // Bridge results
+    BridgeResult(BridgeResult),
+
+    // User intent variants (converted to BridgeCommands by Application)
+    RequestConnect { uuid: Uuid, interface: Option<String> },
+    RequestDisconnect { active_id: String },
+    RequestScan { interface: String },
+    RequestDeviceList,
+    RequestConnectionList,
+    AuthSubmitted { password: String, autoconnect: bool },
+    RequestAddAndActivate { settings: ConnectionSettings, interface: Option<String> },
 }
 
 pub enum Bubble {
