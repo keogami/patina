@@ -13,6 +13,7 @@ use crate::application::{
     home::HomeData,
     theme::PATINA,
 };
+use crate::backend::bridge::{BackendBridge, BridgeCommand};
 
 pub mod component;
 mod home;
@@ -23,35 +24,27 @@ pub use component::Context;
 
 pub struct Application {
     context: Arc<RichContext>,
-    #[allow(unused)]
     pane: Pane,
     message_tx: Arc<std::sync::mpsc::Sender<Message>>,
     message_rx: Option<std::sync::mpsc::Receiver<Message>>,
+    bridge: Arc<BackendBridge>,
+    startup_pending: u32,
 }
 
 impl Application {
     pub fn new(
-        Context {
-            log_file,
-            fps,
-            connection_maxitem,
-        }: Context,
+        context: Arc<RichContext>,
+        bridge: Arc<BackendBridge>,
+        message_tx: Arc<std::sync::mpsc::Sender<Message>>,
+        message_rx: std::sync::mpsc::Receiver<Message>,
     ) -> Self {
-        let (message_tx, message_rx) = std::sync::mpsc::channel();
-        let message_tx = Arc::new(message_tx);
-
-        let context = RichContext {
-            log_file,
-            fps,
-            message: message_tx.clone(),
-            connection_maxitem,
-        };
-
         Self {
-            pane: Pane::Home(HomeData::new(&context)),
-            context: context.into(),
+            context,
+            pane: Pane::Home(HomeData::new()),
             message_tx,
             message_rx: Some(message_rx),
+            bridge,
+            startup_pending: 0,
         }
     }
 
@@ -103,6 +96,13 @@ impl Application {
     /// runs the main loop for the application
     pub fn run(mut self) -> anyhow::Result<()> {
         self.setup_event_polling()?;
+
+        // Send initial startup commands
+        self.bridge.send(BridgeCommand::GetAllDevices);
+        self.bridge.send(BridgeCommand::ListConnections);
+        self.bridge.send(BridgeCommand::GetActiveConnections);
+        self.startup_pending = 3;
+
         let rx = self.message_rx.take().unwrap();
 
         ratatui::run(|term| {
@@ -128,7 +128,159 @@ impl Application {
     }
 
     pub fn update(&mut self, ev: Message) {
-        self.pane.update(&self.context, ev);
+        // Intercept user intent messages and convert to bridge commands
+        match &ev {
+            Message::RequestConnect { uuid, interface } => {
+                self.bridge.send(BridgeCommand::ActivateConnection {
+                    uuid: *uuid,
+                    interface: interface.clone(),
+                });
+                return;
+            }
+            Message::RequestDisconnect { active_id } => {
+                self.bridge.send(BridgeCommand::DeactivateConnection {
+                    active_id: active_id.clone(),
+                });
+                return;
+            }
+            Message::RequestScan { interface } => {
+                self.bridge.send(BridgeCommand::RequestScan {
+                    interface: interface.clone(),
+                });
+                return;
+            }
+            Message::RequestDeviceList => {
+                self.bridge.send(BridgeCommand::GetAllDevices);
+                return;
+            }
+            Message::RequestConnectionList => {
+                self.bridge.send(BridgeCommand::ListConnections);
+                return;
+            }
+            Message::AuthSubmitted {
+                ssid,
+                password,
+                autoconnect: _,
+            } => {
+                self.bridge.send(BridgeCommand::AddAndActivateConnection {
+                    settings: crate::backend::types::ConnectionSettings {
+                        common: crate::backend::types::CommonSettings {
+                            name: ssid.clone(),
+                            uuid: uuid::Uuid::new_v4(),
+                            autoconnect: true,
+                            interface_name: None,
+                            cloned_mac: None,
+                            mtu: None,
+                            metered: None,
+                            zone: None,
+                        },
+                        connection_type: crate::backend::types::ConnectionTypeSettings::Wifi {
+                            ssid: ssid.as_bytes().to_vec(),
+                            mode: crate::backend::types::WifiMode::Infra,
+                            bssid: None,
+                            band: None,
+                            channel: None,
+                            security: crate::backend::types::WifiSecuritySettings::WpaPsk {
+                                version: crate::backend::types::WpaVersion::Wpa2,
+                                password: password.clone(),
+                            },
+                            hidden: false,
+                            powersave: None,
+                        },
+                        ipv4: crate::backend::types::IpSettings {
+                            method: crate::backend::types::IpMethod::Auto,
+                            addresses: vec![],
+                            dns: vec![],
+                            gateway: None,
+                            search_domains: vec![],
+                            routes: vec![],
+                            never_default: false,
+                            ignore_auto_dns: false,
+                        },
+                        ipv6: crate::backend::types::IpSettings {
+                            method: crate::backend::types::IpMethod::Auto,
+                            addresses: vec![],
+                            dns: vec![],
+                            gateway: None,
+                            search_domains: vec![],
+                            routes: vec![],
+                            never_default: false,
+                            ignore_auto_dns: false,
+                        },
+                    },
+                    interface: None, // TODO: get from context
+                });
+                self.pane
+                    .update(&self.context, Message::FinishAuthentication);
+                return;
+            }
+            Message::RequestAddAndActivate {
+                settings,
+                interface,
+            } => {
+                self.bridge.send(BridgeCommand::AddAndActivateConnection {
+                    settings: settings.clone(),
+                    interface: interface.clone(),
+                });
+                return;
+            }
+            Message::BridgeResult(result) => {
+                // Track startup completion
+                match result {
+                    crate::backend::bridge::BridgeResult::AllDevices(Ok(devices)) => {
+                        self.startup_pending = self.startup_pending.saturating_sub(1);
+
+                        // Request access points from WiFi devices
+                        for device in devices {
+                            if matches!(device.device_type, crate::backend::DeviceType::Wifi) {
+                                self.bridge.send(BridgeCommand::GetAccessPoints {
+                                    interface: device.interface.clone(),
+                                });
+                                self.startup_pending += 1; // Increment for each AP request
+                            }
+                        }
+                    }
+                    crate::backend::bridge::BridgeResult::ActiveConnections(_) => {
+                        self.startup_pending = self.startup_pending.saturating_sub(1);
+                    }
+                    crate::backend::bridge::BridgeResult::Connections(_) => {
+                        self.startup_pending = self.startup_pending.saturating_sub(1);
+                    }
+                    crate::backend::bridge::BridgeResult::AccessPoints(_) => {
+                        self.startup_pending = self.startup_pending.saturating_sub(1);
+                    }
+                    crate::backend::bridge::BridgeResult::ScanRequested {
+                        interface,
+                        result: Ok(()),
+                    } => {
+                        // After scan completes, refresh AP list
+                        self.bridge.send(BridgeCommand::GetAccessPoints {
+                            interface: interface.clone(),
+                        });
+                    }
+                    _ => {}
+                }
+
+                // Check if startup is complete
+                if self.startup_pending == 0 {
+                    let _ = self.context.message.send(Message::FinishLoading);
+                }
+
+                // Forward to pane for UI updates
+                let bubble = self.pane.update(&self.context, ev);
+                if let Bubble::Yes(bubbled) = bubble {
+                    self.update(bubbled);
+                }
+                return;
+            }
+            _ => {}
+        }
+
+        // Forward all other messages to the pane
+        let bubble = self.pane.update(&self.context, ev);
+        if let Bubble::Yes(bubbled) = bubble {
+            self.update(bubbled);
+        }
     }
 
     pub fn draw(&mut self, frame: &mut Frame<'_>) {
