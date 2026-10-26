@@ -41,16 +41,26 @@ fn map_active_to_connection_data(active: ActiveConnection) -> ConnectionData {
             strength: 82.0,
             name: active.name.into(),
             interface: active.interface.into(),
-            ip: active.ip4_config.as_ref()
+            ip: active
+                .ip4_config
+                .as_ref()
                 .and_then(|c| c.addresses.first())
                 .map(|a| format!("{}/{}", a.address, a.prefix).into())
                 .unwrap_or_else(|| "0.0.0.0/0".into()),
             frequency: "5 GHz".into(),
             link_speed: "650 Mbps".into(),
-            versions: if active.ip6_config.is_some() { "v4+v6".into() } else { "v4".into() },
+            versions: if active.ip6_config.is_some() {
+                "v4+v6".into()
+            } else {
+                "v4".into()
+            },
             throughput: CircularBuffer::new(),
             bssid: "00:00:00:00:00:00".into(),
-            gateway: active.ip4_config.and_then(|c| c.gateway).unwrap_or_default().into(),
+            gateway: active
+                .ip4_config
+                .and_then(|c| c.gateway)
+                .unwrap_or_default()
+                .into(),
             dns: Vec::new(),
             mac: "00:00:00:00:00:00".into(),
             mtu: 1500,
@@ -67,14 +77,24 @@ fn map_active_to_connection_data(active: ActiveConnection) -> ConnectionData {
         },
         ConnectionType::Ethernet => ConnectionData::WiredActive {
             interface: active.interface.into(),
-            ip: active.ip4_config.as_ref()
+            ip: active
+                .ip4_config
+                .as_ref()
                 .and_then(|c| c.addresses.first())
                 .map(|a| format!("{}/{}", a.address, a.prefix).into())
                 .unwrap_or_else(|| "0.0.0.0/0".into()),
             name: active.name.into(),
-            versions: if active.ip6_config.is_some() { "v4+v6".into() } else { "v4".into() },
+            versions: if active.ip6_config.is_some() {
+                "v4+v6".into()
+            } else {
+                "v4".into()
+            },
             throughput: CircularBuffer::new(),
-            gateway: active.ip4_config.and_then(|c| c.gateway).unwrap_or_default().into(),
+            gateway: active
+                .ip4_config
+                .and_then(|c| c.gateway)
+                .unwrap_or_default()
+                .into(),
             dns: Vec::new(),
             mac: "00:00:00:00:00:00".into(),
             mtu: 1500,
@@ -144,9 +164,9 @@ fn map_profile_to_inactive(profile: ConnectionProfile) -> ConnectionData {
             metered: false, // TODO: extract from profile settings if available
             tag: "saved".into(),
             security: "WPA2".into(), // TODO: extract from profile settings
-            bssid: None, // No specific BSSID for saved profiles
+            bssid: None,             // No specific BSSID for saved profiles
             saved_ip_method: "auto".into(), // TODO: extract from profile settings
-            saved_dns: vec![], // TODO: extract from profile settings
+            saved_dns: vec![],       // TODO: extract from profile settings
         },
         // There's no WiredInactive variant, use WiredActive as placeholder
         _ => ConnectionData::WiredActive {
@@ -528,22 +548,26 @@ impl HomeData {
 
     fn rebuild_connected_list(&mut self) {
         let mut connected_list = Vec::new();
-        
+
         // Add active connections first
         for active_conn in &self.active_connections {
             connected_list.push(Arc::new(map_active_to_connection_data(active_conn.clone())));
         }
-        
+
         // Add inactive profiles (ones not currently active)
         for profile in &self.profiles {
-            let is_active = self.active_connections.iter()
+            let is_active = self
+                .active_connections
+                .iter()
                 .any(|ac| ac.profile_uuid == profile.uuid);
             if !is_active {
                 connected_list.push(Arc::new(map_profile_to_inactive(profile.clone())));
             }
         }
-        
-        self.connected = Connected { list: connected_list };
+
+        self.connected = Connected {
+            list: connected_list,
+        };
     }
 }
 
@@ -620,9 +644,11 @@ impl Component for HomeData {
                     {
                         // Trigger scan on first WiFi device
                         // TODO: In a real implementation, we should get this from devices or context
-                        ctx.message.send(Message::RequestScan {
-                            interface: "wlan0".to_string(), // Default interface for now
-                        }).unwrap();
+                        ctx.message
+                            .send(Message::RequestScan {
+                                interface: "wlan0".to_string(), // Default interface for now
+                            })
+                            .unwrap();
                     }
                     ratatui::crossterm::event::Event::Key(key_event)
                         if key_event.code.is_enter() =>
@@ -631,9 +657,11 @@ impl Component for HomeData {
                             // Handle connected list - disconnect active connections
                             if idx < self.active_connections.len() {
                                 let active = &self.active_connections[idx];
-                                ctx.message.send(Message::RequestDisconnect {
-                                    active_id: active.id.clone(),
-                                }).unwrap();
+                                ctx.message
+                                    .send(Message::RequestDisconnect {
+                                        active_id: active.id.clone(),
+                                    })
+                                    .unwrap();
                             }
                         } else if let Some(s) = self.selected.available_selected()
                             && needs_authentication(&self.available.list[s]).is_ok_and(|n| n)
@@ -689,7 +717,9 @@ impl Component for HomeData {
                             .into_iter()
                             .map(|ap| Arc::new(map_ap_to_available_details(ap)))
                             .collect();
-                        self.available = Available { list: available_list };
+                        self.available = Available {
+                            list: available_list,
+                        };
                     }
                     BridgeResult::AllDevices(Ok(_devices)) => {
                         // Devices loaded, handled by Application startup logic
@@ -706,7 +736,10 @@ impl Component for HomeData {
                         self.authenticate = None;
                         self.loading = None;
                     }
-                    BridgeResult::ConnectionDeactivated { active_id, result: Ok(()) } => {
+                    BridgeResult::ConnectionDeactivated {
+                        active_id,
+                        result: Ok(()),
+                    } => {
                         self.active_connections.retain(|ac| ac.id != *active_id);
                         self.rebuild_connected_list();
                     }

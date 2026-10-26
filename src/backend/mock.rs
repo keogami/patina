@@ -17,8 +17,12 @@ pub struct MockBackend(Arc<Mutex<MockState>>);
 pub enum AuthConfig {
     #[default]
     AlwaysAccept,
-    AlwaysReject { message: String },
-    Random { pass_rate: f64 },
+    AlwaysReject {
+        message: String,
+    },
+    Random {
+        pass_rate: f64,
+    },
 }
 
 // Manual Default impl replaced with derive above.
@@ -66,7 +70,17 @@ struct MockState {
 
 /// Build a rotated AP with signal wobble.
 #[allow(clippy::too_many_arguments)]
-fn ap(ssid: &[u8], bssid: &str, strength: u8, freq: u32, ch: u32, bw: u32, bitrate: u32, sec: SecurityType, last: u32) -> AccessPoint {
+fn ap(
+    ssid: &[u8],
+    bssid: &str,
+    strength: u8,
+    freq: u32,
+    ch: u32,
+    bw: u32,
+    bitrate: u32,
+    sec: SecurityType,
+    last: u32,
+) -> AccessPoint {
     AccessPoint {
         ssid: ssid.to_vec(),
         bssid: bssid.into(),
@@ -92,32 +106,212 @@ impl MockBackend {
         let wpa2e = |v| SecurityType::WpaEnterprise { version: v };
 
         let s0 = vec![
-            ap(b"Overcast-5G", "A4:2B:B0:FE:31:9C", 82, 5220, 44, 80, 650_000, wpa2(WpaVersion::Wpa2), 0),
-            ap(b"Acme-Corp", "88:3D:24:17:02:A1", 71, 5750, 149, 80, 867_000, wpa2e(WpaVersion::Wpa2), 5),
-            ap(b"FiberLink_9A82", "1C:83:41:9A:82:00", 58, 6130, 37, 160, 1_201_000, wpa2(WpaVersion::Wpa3), 12),
-            ap(b"xfinitywifi", "0C:54:A5:88:2B:77", 42, 2412, 1, 20, 150_000, SecurityType::Open, 30),
-            ap(b"TP-Link_5544", "E4:95:6E:55:44:A0", 28, 2437, 6, 20, 300_000, wpa2(WpaVersion::Wpa2), 60),
+            ap(
+                b"Overcast-5G",
+                "A4:2B:B0:FE:31:9C",
+                82,
+                5220,
+                44,
+                80,
+                650_000,
+                wpa2(WpaVersion::Wpa2),
+                0,
+            ),
+            ap(
+                b"Acme-Corp",
+                "88:3D:24:17:02:A1",
+                71,
+                5750,
+                149,
+                80,
+                867_000,
+                wpa2e(WpaVersion::Wpa2),
+                5,
+            ),
+            ap(
+                b"FiberLink_9A82",
+                "1C:83:41:9A:82:00",
+                58,
+                6130,
+                37,
+                160,
+                1_201_000,
+                wpa2(WpaVersion::Wpa3),
+                12,
+            ),
+            ap(
+                b"xfinitywifi",
+                "0C:54:A5:88:2B:77",
+                42,
+                2412,
+                1,
+                20,
+                150_000,
+                SecurityType::Open,
+                30,
+            ),
+            ap(
+                b"TP-Link_5544",
+                "E4:95:6E:55:44:A0",
+                28,
+                2437,
+                6,
+                20,
+                300_000,
+                wpa2(WpaVersion::Wpa2),
+                60,
+            ),
         ];
         let s1 = vec![
-            ap(b"Overcast-5G", "A4:2B:B0:FE:31:9C", 78, 5220, 44, 80, 650_000, wpa2(WpaVersion::Wpa2), 2),
-            ap(b"Acme-Corp", "88:3D:24:17:02:A1", 74, 5750, 149, 80, 867_000, wpa2e(WpaVersion::Wpa2), 7),
-            ap(b"FiberLink_9A82", "1C:83:41:9A:82:00", 62, 6130, 37, 160, 1_201_000, wpa2(WpaVersion::Wpa3), 14),
-            ap(b"xfinitywifi", "0C:54:A5:88:2B:77", 45, 2412, 1, 20, 150_000, SecurityType::Open, 32),
+            ap(
+                b"Overcast-5G",
+                "A4:2B:B0:FE:31:9C",
+                78,
+                5220,
+                44,
+                80,
+                650_000,
+                wpa2(WpaVersion::Wpa2),
+                2,
+            ),
+            ap(
+                b"Acme-Corp",
+                "88:3D:24:17:02:A1",
+                74,
+                5750,
+                149,
+                80,
+                867_000,
+                wpa2e(WpaVersion::Wpa2),
+                7,
+            ),
+            ap(
+                b"FiberLink_9A82",
+                "1C:83:41:9A:82:00",
+                62,
+                6130,
+                37,
+                160,
+                1_201_000,
+                wpa2(WpaVersion::Wpa3),
+                14,
+            ),
+            ap(
+                b"xfinitywifi",
+                "0C:54:A5:88:2B:77",
+                45,
+                2412,
+                1,
+                20,
+                150_000,
+                SecurityType::Open,
+                32,
+            ),
             // TP-Link gone
         ];
         let s2 = vec![
-            ap(b"Overcast-5G", "A4:2B:B0:FE:31:9C", 85, 5220, 44, 80, 650_000, wpa2(WpaVersion::Wpa2), 1),
-            ap(b"Acme-Corp", "88:3D:24:17:02:A1", 68, 5750, 149, 80, 867_000, wpa2e(WpaVersion::Wpa2), 6),
-            ap(b"FiberLink_9A82", "1C:83:41:9A:82:00", 55, 6130, 37, 160, 1_201_000, wpa2(WpaVersion::Wpa3), 13),
+            ap(
+                b"Overcast-5G",
+                "A4:2B:B0:FE:31:9C",
+                85,
+                5220,
+                44,
+                80,
+                650_000,
+                wpa2(WpaVersion::Wpa2),
+                1,
+            ),
+            ap(
+                b"Acme-Corp",
+                "88:3D:24:17:02:A1",
+                68,
+                5750,
+                149,
+                80,
+                867_000,
+                wpa2e(WpaVersion::Wpa2),
+                6,
+            ),
+            ap(
+                b"FiberLink_9A82",
+                "1C:83:41:9A:82:00",
+                55,
+                6130,
+                37,
+                160,
+                1_201_000,
+                wpa2(WpaVersion::Wpa3),
+                13,
+            ),
             // xfinitywifi gone
-            ap(b"TP-Link_5544", "E4:95:6E:55:44:A0", 31, 2437, 6, 20, 300_000, wpa2(WpaVersion::Wpa2), 61),
+            ap(
+                b"TP-Link_5544",
+                "E4:95:6E:55:44:A0",
+                31,
+                2437,
+                6,
+                20,
+                300_000,
+                wpa2(WpaVersion::Wpa2),
+                61,
+            ),
         ];
         let s3 = vec![
-            ap(b"Overcast-5G", "A4:2B:B0:FE:31:9C", 80, 5220, 44, 80, 650_000, wpa2(WpaVersion::Wpa2), 3),
-            ap(b"Acme-Corp", "88:3D:24:17:02:A1", 70, 5750, 149, 80, 867_000, wpa2e(WpaVersion::Wpa2), 8),
-            ap(b"FiberLink_9A82", "1C:83:41:9A:82:00", 60, 6130, 37, 160, 1_201_000, wpa2(WpaVersion::Wpa3), 15),
-            ap(b"xfinitywifi", "0C:54:A5:88:2B:77", 40, 2412, 1, 20, 150_000, SecurityType::Open, 33),
-            ap(b"TP-Link_5544", "E4:95:6E:55:44:A0", 25, 2437, 6, 20, 300_000, wpa2(WpaVersion::Wpa2), 62),
+            ap(
+                b"Overcast-5G",
+                "A4:2B:B0:FE:31:9C",
+                80,
+                5220,
+                44,
+                80,
+                650_000,
+                wpa2(WpaVersion::Wpa2),
+                3,
+            ),
+            ap(
+                b"Acme-Corp",
+                "88:3D:24:17:02:A1",
+                70,
+                5750,
+                149,
+                80,
+                867_000,
+                wpa2e(WpaVersion::Wpa2),
+                8,
+            ),
+            ap(
+                b"FiberLink_9A82",
+                "1C:83:41:9A:82:00",
+                60,
+                6130,
+                37,
+                160,
+                1_201_000,
+                wpa2(WpaVersion::Wpa3),
+                15,
+            ),
+            ap(
+                b"xfinitywifi",
+                "0C:54:A5:88:2B:77",
+                40,
+                2412,
+                1,
+                20,
+                150_000,
+                SecurityType::Open,
+                33,
+            ),
+            ap(
+                b"TP-Link_5544",
+                "E4:95:6E:55:44:A0",
+                25,
+                2437,
+                6,
+                20,
+                300_000,
+                wpa2(WpaVersion::Wpa2),
+                62,
+            ),
         ];
 
         let ap_ring = ApSnapshotRing {
@@ -130,27 +324,182 @@ impl MockBackend {
         let saved_wifi_uuid = Uuid::new_v4();
 
         let saved_connections = vec![
-            ConnectionProfile { uuid: wlan0_uuid, name: "Overcast-5G".into(), connection_type: ConnectionType::Wifi, autoconnect: true, interface_name: Some("wlan0".into()), last_used: Some(SystemTime::now() - Duration::from_secs(300)), unsaved: false, filename: Some("/etc/NetworkManager/system-connections/Overcast-5G.nmconnection".into()) },
-            ConnectionProfile { uuid: eth0_uuid, name: "Wired".into(), connection_type: ConnectionType::Ethernet, autoconnect: true, interface_name: Some("eth0".into()), last_used: Some(SystemTime::now() - Duration::from_secs(86400)), unsaved: false, filename: Some("/etc/NetworkManager/system-connections/Wired.nmconnection".into()) },
-            ConnectionProfile { uuid: saved_wifi_uuid, name: "CoffeeShop".into(), connection_type: ConnectionType::Wifi, autoconnect: false, interface_name: None, last_used: Some(SystemTime::now() - Duration::from_secs(604800)), unsaved: false, filename: Some("/etc/NetworkManager/system-connections/CoffeeShop.nmconnection".into()) },
+            ConnectionProfile {
+                uuid: wlan0_uuid,
+                name: "Overcast-5G".into(),
+                connection_type: ConnectionType::Wifi,
+                autoconnect: true,
+                interface_name: Some("wlan0".into()),
+                last_used: Some(SystemTime::now() - Duration::from_secs(300)),
+                unsaved: false,
+                filename: Some(
+                    "/etc/NetworkManager/system-connections/Overcast-5G.nmconnection".into(),
+                ),
+            },
+            ConnectionProfile {
+                uuid: eth0_uuid,
+                name: "Wired".into(),
+                connection_type: ConnectionType::Ethernet,
+                autoconnect: true,
+                interface_name: Some("eth0".into()),
+                last_used: Some(SystemTime::now() - Duration::from_secs(86400)),
+                unsaved: false,
+                filename: Some("/etc/NetworkManager/system-connections/Wired.nmconnection".into()),
+            },
+            ConnectionProfile {
+                uuid: saved_wifi_uuid,
+                name: "CoffeeShop".into(),
+                connection_type: ConnectionType::Wifi,
+                autoconnect: false,
+                interface_name: None,
+                last_used: Some(SystemTime::now() - Duration::from_secs(604800)),
+                unsaved: false,
+                filename: Some(
+                    "/etc/NetworkManager/system-connections/CoffeeShop.nmconnection".into(),
+                ),
+            },
         ];
 
         let active_connections = vec![
-            ActiveConnection { id: "active-1".into(), profile_uuid: wlan0_uuid, name: "Overcast-5G".into(), connection_type: ConnectionType::Wifi, interface: "wlan0".into(), state: ConnectionState::Activated, state_flags: 0, default: true, default6: true, vpn: false, ip4_config: Some(IpConfig { method: IpMethod::Auto, addresses: vec![IpAddressWithPrefix { address: "10.0.0.147".parse().unwrap(), prefix: 24 }], gateway: Some("10.0.0.1".into()), dns: vec!["10.0.0.1".into()], search_domains: vec![], routes: vec![] }), ip6_config: Some(IpConfig { method: IpMethod::Auto, addresses: vec![IpAddressWithPrefix { address: "fe80::1".parse().unwrap(), prefix: 64 }], gateway: None, dns: vec![], search_domains: vec![], routes: vec![] }), devices: vec!["wlan0".into()] },
-            ActiveConnection { id: "active-2".into(), profile_uuid: eth0_uuid, name: "Wired".into(), connection_type: ConnectionType::Ethernet, interface: "eth0".into(), state: ConnectionState::Activated, state_flags: 0, default: false, default6: false, vpn: false, ip4_config: Some(IpConfig { method: IpMethod::Auto, addresses: vec![IpAddressWithPrefix { address: "192.168.1.42".parse().unwrap(), prefix: 24 }], gateway: Some("192.168.1.1".into()), dns: vec!["192.168.1.1".into()], search_domains: vec![], routes: vec![] }), ip6_config: None, devices: vec!["eth0".into()] },
+            ActiveConnection {
+                id: "active-1".into(),
+                profile_uuid: wlan0_uuid,
+                name: "Overcast-5G".into(),
+                connection_type: ConnectionType::Wifi,
+                interface: "wlan0".into(),
+                state: ConnectionState::Activated,
+                state_flags: 0,
+                default: true,
+                default6: true,
+                vpn: false,
+                ip4_config: Some(IpConfig {
+                    method: IpMethod::Auto,
+                    addresses: vec![IpAddressWithPrefix {
+                        address: "10.0.0.147".parse().unwrap(),
+                        prefix: 24,
+                    }],
+                    gateway: Some("10.0.0.1".into()),
+                    dns: vec!["10.0.0.1".into()],
+                    search_domains: vec![],
+                    routes: vec![],
+                }),
+                ip6_config: Some(IpConfig {
+                    method: IpMethod::Auto,
+                    addresses: vec![IpAddressWithPrefix {
+                        address: "fe80::1".parse().unwrap(),
+                        prefix: 64,
+                    }],
+                    gateway: None,
+                    dns: vec![],
+                    search_domains: vec![],
+                    routes: vec![],
+                }),
+                devices: vec!["wlan0".into()],
+            },
+            ActiveConnection {
+                id: "active-2".into(),
+                profile_uuid: eth0_uuid,
+                name: "Wired".into(),
+                connection_type: ConnectionType::Ethernet,
+                interface: "eth0".into(),
+                state: ConnectionState::Activated,
+                state_flags: 0,
+                default: false,
+                default6: false,
+                vpn: false,
+                ip4_config: Some(IpConfig {
+                    method: IpMethod::Auto,
+                    addresses: vec![IpAddressWithPrefix {
+                        address: "192.168.1.42".parse().unwrap(),
+                        prefix: 24,
+                    }],
+                    gateway: Some("192.168.1.1".into()),
+                    dns: vec!["192.168.1.1".into()],
+                    search_domains: vec![],
+                    routes: vec![],
+                }),
+                ip6_config: None,
+                devices: vec!["eth0".into()],
+            },
         ];
 
         let mut connection_settings = HashMap::new();
-        connection_settings.insert(wlan0_uuid, ConnectionSettings {
-            common: CommonSettings { name: "Overcast-5G".into(), uuid: wlan0_uuid, autoconnect: true, interface_name: Some("wlan0".into()), cloned_mac: None, mtu: None, metered: None, zone: None },
-            connection_type: ConnectionTypeSettings::Wifi { ssid: b"Overcast-5G".to_vec(), mode: WifiMode::Infra, bssid: None, band: None, channel: None, security: WifiSecuritySettings::WpaPsk { version: WpaVersion::Wpa2, password: String::new() }, hidden: false, powersave: None },
-            ipv4: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
-            ipv6: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
-        });
+        connection_settings.insert(
+            wlan0_uuid,
+            ConnectionSettings {
+                common: CommonSettings {
+                    name: "Overcast-5G".into(),
+                    uuid: wlan0_uuid,
+                    autoconnect: true,
+                    interface_name: Some("wlan0".into()),
+                    cloned_mac: None,
+                    mtu: None,
+                    metered: None,
+                    zone: None,
+                },
+                connection_type: ConnectionTypeSettings::Wifi {
+                    ssid: b"Overcast-5G".to_vec(),
+                    mode: WifiMode::Infra,
+                    bssid: None,
+                    band: None,
+                    channel: None,
+                    security: WifiSecuritySettings::WpaPsk {
+                        version: WpaVersion::Wpa2,
+                        password: String::new(),
+                    },
+                    hidden: false,
+                    powersave: None,
+                },
+                ipv4: IpSettings {
+                    method: IpMethod::Auto,
+                    addresses: vec![],
+                    gateway: None,
+                    dns: vec![],
+                    search_domains: vec![],
+                    routes: vec![],
+                    never_default: false,
+                    ignore_auto_dns: false,
+                },
+                ipv6: IpSettings {
+                    method: IpMethod::Auto,
+                    addresses: vec![],
+                    gateway: None,
+                    dns: vec![],
+                    search_domains: vec![],
+                    routes: vec![],
+                    never_default: false,
+                    ignore_auto_dns: false,
+                },
+            },
+        );
 
         let mut device_stats = HashMap::new();
-        device_stats.insert("wlan0".into(), DeviceStats { device: "wlan0".into(), rx_bytes: 1_000_000, tx_bytes: 500_000, rx_packets: 10_000, tx_packets: 5_000, signal_dbm: -45, tx_rate: 650_000, rx_rate: 650_000 });
-        device_stats.insert("eth0".into(), DeviceStats { device: "eth0".into(), rx_bytes: 10_000_000, tx_bytes: 5_000_000, rx_packets: 100_000, tx_packets: 50_000, signal_dbm: 0, tx_rate: 1_000_000, rx_rate: 1_000_000 });
+        device_stats.insert(
+            "wlan0".into(),
+            DeviceStats {
+                device: "wlan0".into(),
+                rx_bytes: 1_000_000,
+                tx_bytes: 500_000,
+                rx_packets: 10_000,
+                tx_packets: 5_000,
+                signal_dbm: -45,
+                tx_rate: 650_000,
+                rx_rate: 650_000,
+            },
+        );
+        device_stats.insert(
+            "eth0".into(),
+            DeviceStats {
+                device: "eth0".into(),
+                rx_bytes: 10_000_000,
+                tx_bytes: 5_000_000,
+                rx_packets: 100_000,
+                tx_packets: 50_000,
+                signal_dbm: 0,
+                tx_rate: 1_000_000,
+                rx_rate: 1_000_000,
+            },
+        );
 
         let global_state = GlobalState {
             version: "1.56.0".into(),
@@ -167,8 +516,32 @@ impl MockBackend {
 
         let state = MockState {
             devices: vec![
-                Device { interface: "wlan0".into(), ip_interface: Some("wlan0".into()), device_type: DeviceType::Wifi, state: DeviceState::Activated, state_reason: None, managed: true, autoconnect: true, mac_address: "A4:2B:B0:FE:31:9C".into(), mtu: 1500, driver: "iwlwifi".into(), driver_version: "0.1".into() },
-                Device { interface: "eth0".into(), ip_interface: Some("eth0".into()), device_type: DeviceType::Ethernet, state: DeviceState::Activated, state_reason: None, managed: true, autoconnect: true, mac_address: "00:1A:2B:3C:4D:5E".into(), mtu: 1500, driver: "e1000e".into(), driver_version: "0.1".into() },
+                Device {
+                    interface: "wlan0".into(),
+                    ip_interface: Some("wlan0".into()),
+                    device_type: DeviceType::Wifi,
+                    state: DeviceState::Activated,
+                    state_reason: None,
+                    managed: true,
+                    autoconnect: true,
+                    mac_address: "A4:2B:B0:FE:31:9C".into(),
+                    mtu: 1500,
+                    driver: "iwlwifi".into(),
+                    driver_version: "0.1".into(),
+                },
+                Device {
+                    interface: "eth0".into(),
+                    ip_interface: Some("eth0".into()),
+                    device_type: DeviceType::Ethernet,
+                    state: DeviceState::Activated,
+                    state_reason: None,
+                    managed: true,
+                    autoconnect: true,
+                    mac_address: "00:1A:2B:3C:4D:5E".into(),
+                    mtu: 1500,
+                    driver: "e1000e".into(),
+                    driver_version: "0.1".into(),
+                },
             ],
             ap_ring,
             saved_connections,
@@ -207,7 +580,11 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
         let interface = interface.to_string();
         async move {
             let state = backend.0.lock().await;
-            Ok(state.devices.iter().find(|d| d.interface == interface).cloned())
+            Ok(state
+                .devices
+                .iter()
+                .find(|d| d.interface == interface)
+                .cloned())
         }
     }
 
@@ -239,7 +616,9 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
 
                 // Emit ScanDone to AP subscribers for this interface.
                 if let Some(txs) = state.ap_event_txs.get(&interface) {
-                    let event = ApEvent::ScanDone { interface: interface.clone() };
+                    let event = ApEvent::ScanDone {
+                        interface: interface.clone(),
+                    };
                     for tx in txs.iter() {
                         let _ = tx.send(event.clone());
                     }
@@ -265,24 +644,35 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
         }
     }
 
-    fn get_connection_by_uuid(&self, uuid: &Uuid) -> impl Future<Output = Result<ConnectionProfile>> + Send {
+    fn get_connection_by_uuid(
+        &self,
+        uuid: &Uuid,
+    ) -> impl Future<Output = Result<ConnectionProfile>> + Send {
         let backend = self.clone();
         let uuid = *uuid;
         async move {
             let state = backend.0.lock().await;
-            state.saved_connections.iter()
+            state
+                .saved_connections
+                .iter()
                 .find(|c| c.uuid == uuid)
                 .cloned()
                 .context("Connection not found")
         }
     }
-    fn activate_connection(&self, uuid: &Uuid, interface: Option<&str>) -> impl Future<Output = Result<ActiveConnection>> + Send {
+    fn activate_connection(
+        &self,
+        uuid: &Uuid,
+        interface: Option<&str>,
+    ) -> impl Future<Output = Result<ActiveConnection>> + Send {
         let backend = self.clone();
         let uuid = *uuid;
         let interface = interface.map(|s| s.to_string());
         async move {
             let mut state = backend.0.lock().await;
-            let profile = state.saved_connections.iter()
+            let profile = state
+                .saved_connections
+                .iter()
                 .find(|c| c.uuid == uuid)
                 .cloned()
                 .context("Connection not found")?;
@@ -290,7 +680,12 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             let id = format!("active-{}", state.next_active_id);
             state.next_active_id += 1;
 
-            let interface = interface.unwrap_or_else(|| profile.interface_name.clone().unwrap_or_else(|| "unknown".into()));
+            let interface = interface.unwrap_or_else(|| {
+                profile
+                    .interface_name
+                    .clone()
+                    .unwrap_or_else(|| "unknown".into())
+            });
 
             let active = ActiveConnection {
                 id: id.clone(),
@@ -305,7 +700,10 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
                 vpn: false,
                 ip4_config: Some(IpConfig {
                     method: IpMethod::Auto,
-                    addresses: vec![IpAddressWithPrefix { address: "192.168.1.100".parse().unwrap(), prefix: 24 }],
+                    addresses: vec![IpAddressWithPrefix {
+                        address: "192.168.1.100".parse().unwrap(),
+                        prefix: 24,
+                    }],
                     gateway: Some("192.168.1.1".into()),
                     dns: vec!["192.168.1.1".into()],
                     search_domains: vec![],
@@ -334,7 +732,9 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
         let active_id = active_id.to_string();
         async move {
             let mut state = backend.0.lock().await;
-            let idx = state.active_connections.iter()
+            let idx = state
+                .active_connections
+                .iter()
                 .position(|a| a.id == active_id)
                 .context("Active connection not found")?;
 
@@ -357,7 +757,9 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
         let interface = interface.to_string();
         async move {
             let mut state = backend.0.lock().await;
-            let to_remove: Vec<String> = state.active_connections.iter()
+            let to_remove: Vec<String> = state
+                .active_connections
+                .iter()
                 .filter(|a| a.interface == interface)
                 .map(|a| a.id.clone())
                 .collect();
@@ -369,7 +771,11 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             Ok(())
         }
     }
-    fn add_and_activate_connection(&self, settings: &ConnectionSettings, interface: Option<&str>) -> impl Future<Output = Result<ActiveConnection>> + Send {
+    fn add_and_activate_connection(
+        &self,
+        settings: &ConnectionSettings,
+        interface: Option<&str>,
+    ) -> impl Future<Output = Result<ActiveConnection>> + Send {
         let backend = self.clone();
         let settings = settings.clone();
         let interface = interface.map(|s| s.to_string());
@@ -390,10 +796,16 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
                 }
             }
             let profile = backend.add_connection(&settings).await?;
-            backend.activate_connection(&profile.uuid, interface.as_deref()).await
+            backend
+                .activate_connection(&profile.uuid, interface.as_deref())
+                .await
         }
     }
-    fn get_secrets(&self, _uuid: &Uuid, _setting_name: &str) -> impl Future<Output = Result<Secrets>> + Send {
+    fn get_secrets(
+        &self,
+        _uuid: &Uuid,
+        _setting_name: &str,
+    ) -> impl Future<Output = Result<Secrets>> + Send {
         async move { Ok(Secrets::new()) }
     }
     fn get_settings(&self, uuid: &Uuid) -> impl Future<Output = Result<ConnectionSettings>> + Send {
@@ -401,12 +813,18 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
         let uuid = *uuid;
         async move {
             let state = backend.0.lock().await;
-            state.connection_settings.get(&uuid)
+            state
+                .connection_settings
+                .get(&uuid)
                 .cloned()
                 .context("Settings not found")
         }
     }
-    fn update_connection(&self, uuid: &Uuid, settings: &ConnectionSettings) -> impl Future<Output = Result<()>> + Send {
+    fn update_connection(
+        &self,
+        uuid: &Uuid,
+        settings: &ConnectionSettings,
+    ) -> impl Future<Output = Result<()>> + Send {
         let backend = self.clone();
         let uuid = *uuid;
         let settings = settings.clone();
@@ -430,7 +848,10 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             Ok(())
         }
     }
-    fn add_connection(&self, settings: &ConnectionSettings) -> impl Future<Output = Result<ConnectionProfile>> + Send {
+    fn add_connection(
+        &self,
+        settings: &ConnectionSettings,
+    ) -> impl Future<Output = Result<ConnectionProfile>> + Send {
         let backend = self.clone();
         let settings = settings.clone();
         async move {
@@ -451,7 +872,10 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
                 interface_name: settings.common.interface_name.clone(),
                 last_used: None,
                 unsaved: false,
-                filename: Some(format!("/etc/NetworkManager/system-connections/{}.nmconnection", settings.common.name)),
+                filename: Some(format!(
+                    "/etc/NetworkManager/system-connections/{}.nmconnection",
+                    settings.common.name
+                )),
             };
 
             state.saved_connections.push(profile.clone());
@@ -470,7 +894,9 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
         let uuid = *uuid;
         async move {
             let mut state = backend.0.lock().await;
-            let idx = state.saved_connections.iter()
+            let idx = state
+                .saved_connections
+                .iter()
                 .position(|c| c.uuid == uuid)
                 .context("Connection not found")?;
             state.saved_connections.remove(idx);
@@ -522,7 +948,11 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             Ok(())
         }
     }
-    fn set_device_managed(&self, interface: &str, managed: bool) -> impl Future<Output = Result<()>> + Send {
+    fn set_device_managed(
+        &self,
+        interface: &str,
+        managed: bool,
+    ) -> impl Future<Output = Result<()>> + Send {
         let backend = self.clone();
         let interface = interface.to_string();
         async move {
@@ -530,13 +960,20 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             if let Some(dev) = state.devices.iter_mut().find(|d| d.interface == interface) {
                 dev.managed = managed;
                 for tx in state.device_event_txs.iter() {
-                    let _ = tx.send(DeviceEvent::ManagedChanged { interface: interface.clone(), managed });
+                    let _ = tx.send(DeviceEvent::ManagedChanged {
+                        interface: interface.clone(),
+                        managed,
+                    });
                 }
             }
             Ok(())
         }
     }
-    fn set_device_autoconnect(&self, interface: &str, autoconnect: bool) -> impl Future<Output = Result<()>> + Send {
+    fn set_device_autoconnect(
+        &self,
+        interface: &str,
+        autoconnect: bool,
+    ) -> impl Future<Output = Result<()>> + Send {
         let backend = self.clone();
         let interface = interface.to_string();
         async move {
@@ -544,27 +981,36 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             if let Some(dev) = state.devices.iter_mut().find(|d| d.interface == interface) {
                 dev.autoconnect = autoconnect;
                 for tx in state.device_event_txs.iter() {
-                    let _ = tx.send(DeviceEvent::AutoconnectChanged { interface: interface.clone(), autoconnect });
+                    let _ = tx.send(DeviceEvent::AutoconnectChanged {
+                        interface: interface.clone(),
+                        autoconnect,
+                    });
                 }
             }
             Ok(())
         }
     }
-    fn get_device_stats(&self, interface: &str) -> impl Future<Output = Result<DeviceStats>> + Send {
+    fn get_device_stats(
+        &self,
+        interface: &str,
+    ) -> impl Future<Output = Result<DeviceStats>> + Send {
         let backend = self.clone();
         let interface = interface.to_string();
         async move {
             let mut state = backend.0.lock().await;
-            let stats = state.device_stats.entry(interface.clone()).or_insert_with(|| DeviceStats {
-                device: interface.clone(),
-                rx_bytes: 0,
-                tx_bytes: 0,
-                rx_packets: 0,
-                tx_packets: 0,
-                signal_dbm: -50,
-                tx_rate: 0,
-                rx_rate: 0,
-            });
+            let stats = state
+                .device_stats
+                .entry(interface.clone())
+                .or_insert_with(|| DeviceStats {
+                    device: interface.clone(),
+                    rx_bytes: 0,
+                    tx_bytes: 0,
+                    rx_packets: 0,
+                    tx_packets: 0,
+                    signal_dbm: -50,
+                    tx_rate: 0,
+                    rx_rate: 0,
+                });
             stats.rx_bytes += 1_000;
             stats.tx_bytes += 500;
             stats.rx_packets += 10;
@@ -572,7 +1018,9 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             Ok(stats.clone())
         }
     }
-    fn subscribe_device_events(&self) -> impl Future<Output = Result<mpsc::UnboundedReceiver<DeviceEvent>>> + Send {
+    fn subscribe_device_events(
+        &self,
+    ) -> impl Future<Output = Result<mpsc::UnboundedReceiver<DeviceEvent>>> + Send {
         let backend = self.clone();
         async move {
             let (tx, rx) = mpsc::unbounded_channel();
@@ -581,7 +1029,10 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             Ok(rx)
         }
     }
-    fn subscribe_ap_events(&self, interface: &str) -> impl Future<Output = Result<mpsc::UnboundedReceiver<ApEvent>>> + Send {
+    fn subscribe_ap_events(
+        &self,
+        interface: &str,
+    ) -> impl Future<Output = Result<mpsc::UnboundedReceiver<ApEvent>>> + Send {
         let backend = self.clone();
         let interface = interface.to_string();
         async move {
@@ -591,7 +1042,9 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             Ok(rx)
         }
     }
-    fn subscribe_profile_events(&self) -> impl Future<Output = Result<mpsc::UnboundedReceiver<ProfileEvent>>> + Send {
+    fn subscribe_profile_events(
+        &self,
+    ) -> impl Future<Output = Result<mpsc::UnboundedReceiver<ProfileEvent>>> + Send {
         let backend = self.clone();
         async move {
             let (tx, rx) = mpsc::unbounded_channel();
@@ -600,7 +1053,9 @@ impl crate::backend::NetworkManagerBackend for MockBackend {
             Ok(rx)
         }
     }
-    fn subscribe_active_events(&self) -> impl Future<Output = Result<mpsc::UnboundedReceiver<ActiveEvent>>> + Send {
+    fn subscribe_active_events(
+        &self,
+    ) -> impl Future<Output = Result<mpsc::UnboundedReceiver<ActiveEvent>>> + Send {
         let backend = self.clone();
         async move {
             let (tx, rx) = mpsc::unbounded_channel();
@@ -639,7 +1094,10 @@ mod tests {
         let conns = backend.list_connections().await.unwrap();
         let target = conns.iter().find(|c| c.name == "CoffeeShop").unwrap();
 
-        let active = backend.activate_connection(&target.uuid, Some("wlan0")).await.unwrap();
+        let active = backend
+            .activate_connection(&target.uuid, Some("wlan0"))
+            .await
+            .unwrap();
         assert_eq!(active.name, "CoffeeShop");
         assert_eq!(active.interface, "wlan0");
         assert_eq!(active.state, ConnectionState::Activated);
@@ -692,12 +1150,33 @@ mod tests {
                 bssid: None,
                 band: None,
                 channel: None,
-                security: WifiSecuritySettings::WpaPsk { version: WpaVersion::Wpa2, password: "secret".into() },
+                security: WifiSecuritySettings::WpaPsk {
+                    version: WpaVersion::Wpa2,
+                    password: "secret".into(),
+                },
                 hidden: false,
                 powersave: None,
             },
-            ipv4: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
-            ipv6: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
+            ipv4: IpSettings {
+                method: IpMethod::Auto,
+                addresses: vec![],
+                gateway: None,
+                dns: vec![],
+                search_domains: vec![],
+                routes: vec![],
+                never_default: false,
+                ignore_auto_dns: false,
+            },
+            ipv6: IpSettings {
+                method: IpMethod::Auto,
+                addresses: vec![],
+                gateway: None,
+                dns: vec![],
+                search_domains: vec![],
+                routes: vec![],
+                never_default: false,
+                ignore_auto_dns: false,
+            },
         };
         let profile = backend.add_connection(&settings).await.unwrap();
         assert_eq!(profile.name, "TestNet");
@@ -713,7 +1192,10 @@ mod tests {
         // Update
         let mut updated = fetched.clone();
         updated.common.name = "TestNetUpdated".into();
-        backend.update_connection(&profile.uuid, &updated).await.unwrap();
+        backend
+            .update_connection(&profile.uuid, &updated)
+            .await
+            .unwrap();
 
         let fetched2 = backend.get_settings(&profile.uuid).await.unwrap();
         assert_eq!(fetched2.common.name, "TestNetUpdated");
@@ -757,7 +1239,9 @@ mod tests {
 
         let event = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await;
         assert!(event.is_ok());
-        assert!(matches!(event.unwrap(), Some(DeviceEvent::ManagedChanged { interface, managed }) if interface == "wlan0" && !managed));
+        assert!(
+            matches!(event.unwrap(), Some(DeviceEvent::ManagedChanged { interface, managed }) if interface == "wlan0" && !managed)
+        );
     }
 
     #[tokio::test]
@@ -775,14 +1259,18 @@ mod tests {
         backend.request_scan("wlan0").await.unwrap();
         backend.request_scan("wlan0").await.unwrap();
         let aps4 = backend.get_access_points("wlan0").await.unwrap();
-        assert_eq!(aps0.len(), aps4.len(), "AP count should cycle back after 4 scans");
+        assert_eq!(
+            aps0.len(),
+            aps4.len(),
+            "AP count should cycle back after 4 scans"
+        );
     }
 
     #[tokio::test]
     async fn mock_auth_always_reject() {
-        let backend = MockBackend::with_auth_config(
-            AuthConfig::AlwaysReject { message: "bad password".into() }
-        );
+        let backend = MockBackend::with_auth_config(AuthConfig::AlwaysReject {
+            message: "bad password".into(),
+        });
         let settings = ConnectionSettings {
             common: CommonSettings {
                 name: "FailNet".into(),
@@ -800,23 +1288,45 @@ mod tests {
                 bssid: None,
                 band: None,
                 channel: None,
-                security: WifiSecuritySettings::WpaPsk { version: WpaVersion::Wpa2, password: "wrong".into() },
+                security: WifiSecuritySettings::WpaPsk {
+                    version: WpaVersion::Wpa2,
+                    password: "wrong".into(),
+                },
                 hidden: false,
                 powersave: None,
             },
-            ipv4: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
-            ipv6: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
+            ipv4: IpSettings {
+                method: IpMethod::Auto,
+                addresses: vec![],
+                gateway: None,
+                dns: vec![],
+                search_domains: vec![],
+                routes: vec![],
+                never_default: false,
+                ignore_auto_dns: false,
+            },
+            ipv6: IpSettings {
+                method: IpMethod::Auto,
+                addresses: vec![],
+                gateway: None,
+                dns: vec![],
+                search_domains: vec![],
+                routes: vec![],
+                never_default: false,
+                ignore_auto_dns: false,
+            },
         };
-        let err = backend.add_and_activate_connection(&settings, None).await.unwrap_err();
+        let err = backend
+            .add_and_activate_connection(&settings, None)
+            .await
+            .unwrap_err();
         assert!(err.to_string().contains("bad password"));
     }
 
     #[tokio::test]
     async fn mock_auth_random_eventually_accepts() {
         // With pass_rate=1.0 it should always succeed.
-        let backend = MockBackend::with_auth_config(
-            AuthConfig::Random { pass_rate: 1.0 }
-        );
+        let backend = MockBackend::with_auth_config(AuthConfig::Random { pass_rate: 1.0 });
         let settings = ConnectionSettings {
             common: CommonSettings {
                 name: "SureNet".into(),
@@ -834,12 +1344,33 @@ mod tests {
                 bssid: None,
                 band: None,
                 channel: None,
-                security: WifiSecuritySettings::WpaPsk { version: WpaVersion::Wpa2, password: "secret".into() },
+                security: WifiSecuritySettings::WpaPsk {
+                    version: WpaVersion::Wpa2,
+                    password: "secret".into(),
+                },
                 hidden: false,
                 powersave: None,
             },
-            ipv4: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
-            ipv6: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
+            ipv4: IpSettings {
+                method: IpMethod::Auto,
+                addresses: vec![],
+                gateway: None,
+                dns: vec![],
+                search_domains: vec![],
+                routes: vec![],
+                never_default: false,
+                ignore_auto_dns: false,
+            },
+            ipv6: IpSettings {
+                method: IpMethod::Auto,
+                addresses: vec![],
+                gateway: None,
+                dns: vec![],
+                search_domains: vec![],
+                routes: vec![],
+                never_default: false,
+                ignore_auto_dns: false,
+            },
         };
         let res = backend.add_and_activate_connection(&settings, None).await;
         assert!(res.is_ok(), "pass_rate=1.0 should always succeed");
@@ -848,9 +1379,7 @@ mod tests {
     #[tokio::test]
     async fn mock_auth_random_eventually_rejects() {
         // With pass_rate=0.0 it should always fail.
-        let backend = MockBackend::with_auth_config(
-            AuthConfig::Random { pass_rate: 0.0 }
-        );
+        let backend = MockBackend::with_auth_config(AuthConfig::Random { pass_rate: 0.0 });
         let settings = ConnectionSettings {
             common: CommonSettings {
                 name: "NeverNet".into(),
@@ -868,14 +1397,38 @@ mod tests {
                 bssid: None,
                 band: None,
                 channel: None,
-                security: WifiSecuritySettings::WpaPsk { version: WpaVersion::Wpa2, password: "secret".into() },
+                security: WifiSecuritySettings::WpaPsk {
+                    version: WpaVersion::Wpa2,
+                    password: "secret".into(),
+                },
                 hidden: false,
                 powersave: None,
             },
-            ipv4: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
-            ipv6: IpSettings { method: IpMethod::Auto, addresses: vec![], gateway: None, dns: vec![], search_domains: vec![], routes: vec![], never_default: false, ignore_auto_dns: false },
+            ipv4: IpSettings {
+                method: IpMethod::Auto,
+                addresses: vec![],
+                gateway: None,
+                dns: vec![],
+                search_domains: vec![],
+                routes: vec![],
+                never_default: false,
+                ignore_auto_dns: false,
+            },
+            ipv6: IpSettings {
+                method: IpMethod::Auto,
+                addresses: vec![],
+                gateway: None,
+                dns: vec![],
+                search_domains: vec![],
+                routes: vec![],
+                never_default: false,
+                ignore_auto_dns: false,
+            },
         };
-        let err = backend.add_and_activate_connection(&settings, None).await.unwrap_err();
+        let err = backend
+            .add_and_activate_connection(&settings, None)
+            .await
+            .unwrap_err();
         assert!(err.to_string().contains("wrong password"));
     }
 }

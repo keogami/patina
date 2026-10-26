@@ -6,8 +6,8 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::application::component::Message;
-use crate::backend::types::*;
 use crate::backend::NetworkManagerBackend;
+use crate::backend::types::*;
 
 /// Cloneable error type for bridge results
 #[derive(Debug, Clone)]
@@ -30,46 +30,96 @@ pub type BridgeResultType<T> = Result<T, BridgeError>;
 pub enum BridgeCommand {
     // Discovery
     GetAllDevices,
-    GetDeviceByInterface { interface: String },
-    GetAccessPoints { interface: String },
-    RequestScan { interface: String },
+    GetDeviceByInterface {
+        interface: String,
+    },
+    GetAccessPoints {
+        interface: String,
+    },
+    RequestScan {
+        interface: String,
+    },
 
     // Connection Control
     ListConnections,
     GetActiveConnections,
-    GetConnectionByUuid { uuid: Uuid },
-    ActivateConnection { uuid: Uuid, interface: Option<String> },
-    DeactivateConnection { active_id: String },
-    DisconnectDevice { interface: String },
-    AddAndActivateConnection { settings: ConnectionSettings, interface: Option<String> },
-    GetSecrets { uuid: Uuid, setting_name: String },
+    GetConnectionByUuid {
+        uuid: Uuid,
+    },
+    ActivateConnection {
+        uuid: Uuid,
+        interface: Option<String>,
+    },
+    DeactivateConnection {
+        active_id: String,
+    },
+    DisconnectDevice {
+        interface: String,
+    },
+    AddAndActivateConnection {
+        settings: ConnectionSettings,
+        interface: Option<String>,
+    },
+    GetSecrets {
+        uuid: Uuid,
+        setting_name: String,
+    },
 
     // Configuration (CRUD)
-    GetSettings { uuid: Uuid },
-    UpdateConnection { uuid: Uuid, settings: ConnectionSettings },
-    AddConnection { settings: ConnectionSettings },
-    DeleteConnection { uuid: Uuid },
+    GetSettings {
+        uuid: Uuid,
+    },
+    UpdateConnection {
+        uuid: Uuid,
+        settings: ConnectionSettings,
+    },
+    AddConnection {
+        settings: ConnectionSettings,
+    },
+    DeleteConnection {
+        uuid: Uuid,
+    },
 
     // Global State
     GetGlobalState,
-    SetNetworkingEnabled { enabled: bool },
-    SetWirelessEnabled { enabled: bool },
-    SetWwanEnabled { enabled: bool },
-    SaveHostname { hostname: String },
+    SetNetworkingEnabled {
+        enabled: bool,
+    },
+    SetWirelessEnabled {
+        enabled: bool,
+    },
+    SetWwanEnabled {
+        enabled: bool,
+    },
+    SaveHostname {
+        hostname: String,
+    },
 
     // Device Settings
-    SetDeviceManaged { interface: String, managed: bool },
-    SetDeviceAutoconnect { interface: String, autoconnect: bool },
+    SetDeviceManaged {
+        interface: String,
+        managed: bool,
+    },
+    SetDeviceAutoconnect {
+        interface: String,
+        autoconnect: bool,
+    },
 
     // Monitoring
-    GetDeviceStats { interface: String },
+    GetDeviceStats {
+        interface: String,
+    },
 
     // Subscriptions
     SubscribeDeviceEvents,
-    SubscribeApEvents { interface: String },
+    SubscribeApEvents {
+        interface: String,
+    },
     SubscribeProfileEvents,
     SubscribeActiveEvents,
-    Unsubscribe { handle: SubscriptionHandle },
+    Unsubscribe {
+        handle: SubscriptionHandle,
+    },
 }
 
 /// Results sent from the bridge task back to the UI thread
@@ -79,14 +129,20 @@ pub enum BridgeResult {
     AllDevices(BridgeResultType<Vec<Device>>),
     DeviceByInterface(BridgeResultType<Option<Device>>),
     AccessPoints(BridgeResultType<Vec<AccessPoint>>),
-    ScanRequested { interface: String, result: BridgeResultType<()> },
+    ScanRequested {
+        interface: String,
+        result: BridgeResultType<()>,
+    },
 
     // Connection Control results
     Connections(BridgeResultType<Vec<ConnectionProfile>>),
     ActiveConnections(BridgeResultType<Vec<ActiveConnection>>),
     ConnectionByUuid(BridgeResultType<ConnectionProfile>),
     ConnectionActivated(BridgeResultType<ActiveConnection>),
-    ConnectionDeactivated { active_id: String, result: BridgeResultType<()> },
+    ConnectionDeactivated {
+        active_id: String,
+        result: BridgeResultType<()>,
+    },
     DeviceDisconnected(BridgeResultType<()>),
     ConnectionAddedAndActivated(BridgeResultType<ActiveConnection>),
     Secrets(BridgeResultType<HashMap<String, String>>),
@@ -164,17 +220,20 @@ impl BackendBridge {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.get_device_by_interface(&interface)
+                            let res = b
+                                .get_device_by_interface(&interface)
                                 .await
                                 .map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::DeviceByInterface(res)));
+                            let _ = tx
+                                .send(Message::BridgeResult(BridgeResult::DeviceByInterface(res)));
                         });
                     }
                     BridgeCommand::GetAccessPoints { interface } => {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.get_access_points(&interface)
+                            let res = b
+                                .get_access_points(&interface)
                                 .await
                                 .map_err(BridgeError::from);
                             let _ = tx.send(Message::BridgeResult(BridgeResult::AccessPoints(res)));
@@ -207,25 +266,33 @@ impl BackendBridge {
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
                             let res = b.get_active_connections().await.map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::ActiveConnections(res)));
+                            let _ = tx
+                                .send(Message::BridgeResult(BridgeResult::ActiveConnections(res)));
                         });
                     }
                     BridgeCommand::GetConnectionByUuid { uuid } => {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.get_connection_by_uuid(&uuid).await.map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionByUuid(res)));
+                            let res = b
+                                .get_connection_by_uuid(&uuid)
+                                .await
+                                .map_err(BridgeError::from);
+                            let _ =
+                                tx.send(Message::BridgeResult(BridgeResult::ConnectionByUuid(res)));
                         });
                     }
                     BridgeCommand::ActivateConnection { uuid, interface } => {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.activate_connection(&uuid, interface.as_deref())
+                            let res = b
+                                .activate_connection(&uuid, interface.as_deref())
                                 .await
                                 .map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionActivated(res)));
+                            let _ = tx.send(Message::BridgeResult(
+                                BridgeResult::ConnectionActivated(res),
+                            ));
                         });
                     }
                     BridgeCommand::DeactivateConnection { active_id } => {
@@ -233,38 +300,54 @@ impl BackendBridge {
                         let tx = ui_tx.clone();
                         let id = active_id.clone();
                         tokio::spawn(async move {
-                            let res = b.deactivate_connection(&active_id)
+                            let res = b
+                                .deactivate_connection(&active_id)
                                 .await
                                 .map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionDeactivated {
-                                active_id: id,
-                                result: res,
-                            }));
+                            let _ = tx.send(Message::BridgeResult(
+                                BridgeResult::ConnectionDeactivated {
+                                    active_id: id,
+                                    result: res,
+                                },
+                            ));
                         });
                     }
                     BridgeCommand::DisconnectDevice { interface } => {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.disconnect_device(&interface).await.map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::DeviceDisconnected(res)));
+                            let res = b
+                                .disconnect_device(&interface)
+                                .await
+                                .map_err(BridgeError::from);
+                            let _ = tx
+                                .send(Message::BridgeResult(BridgeResult::DeviceDisconnected(res)));
                         });
                     }
-                    BridgeCommand::AddAndActivateConnection { settings, interface } => {
+                    BridgeCommand::AddAndActivateConnection {
+                        settings,
+                        interface,
+                    } => {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.add_and_activate_connection(&settings, interface.as_deref())
+                            let res = b
+                                .add_and_activate_connection(&settings, interface.as_deref())
                                 .await
                                 .map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionAddedAndActivated(res)));
+                            let _ = tx.send(Message::BridgeResult(
+                                BridgeResult::ConnectionAddedAndActivated(res),
+                            ));
                         });
                     }
                     BridgeCommand::GetSecrets { uuid, setting_name } => {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.get_secrets(&uuid, &setting_name).await.map_err(BridgeError::from);
+                            let res = b
+                                .get_secrets(&uuid, &setting_name)
+                                .await
+                                .map_err(BridgeError::from);
                             let _ = tx.send(Message::BridgeResult(BridgeResult::Secrets(res)));
                         });
                     }
@@ -282,8 +365,12 @@ impl BackendBridge {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.update_connection(&uuid, &settings).await.map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionUpdated(res)));
+                            let res = b
+                                .update_connection(&uuid, &settings)
+                                .await
+                                .map_err(BridgeError::from);
+                            let _ = tx
+                                .send(Message::BridgeResult(BridgeResult::ConnectionUpdated(res)));
                         });
                     }
                     BridgeCommand::AddConnection { settings } => {
@@ -291,7 +378,8 @@ impl BackendBridge {
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
                             let res = b.add_connection(&settings).await.map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionAdded(res)));
+                            let _ =
+                                tx.send(Message::BridgeResult(BridgeResult::ConnectionAdded(res)));
                         });
                     }
                     BridgeCommand::DeleteConnection { uuid } => {
@@ -299,7 +387,8 @@ impl BackendBridge {
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
                             let res = b.delete_connection(&uuid).await.map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::ConnectionDeleted(res)));
+                            let _ = tx
+                                .send(Message::BridgeResult(BridgeResult::ConnectionDeleted(res)));
                         });
                     }
 
@@ -316,16 +405,25 @@ impl BackendBridge {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.set_networking_enabled(enabled).await.map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::NetworkingEnabledSet(res)));
+                            let res = b
+                                .set_networking_enabled(enabled)
+                                .await
+                                .map_err(BridgeError::from);
+                            let _ = tx.send(Message::BridgeResult(
+                                BridgeResult::NetworkingEnabledSet(res),
+                            ));
                         });
                     }
                     BridgeCommand::SetWirelessEnabled { enabled } => {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.set_wireless_enabled(enabled).await.map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::WirelessEnabledSet(res)));
+                            let res = b
+                                .set_wireless_enabled(enabled)
+                                .await
+                                .map_err(BridgeError::from);
+                            let _ = tx
+                                .send(Message::BridgeResult(BridgeResult::WirelessEnabledSet(res)));
                         });
                     }
                     BridgeCommand::SetWwanEnabled { enabled } => {
@@ -333,7 +431,8 @@ impl BackendBridge {
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
                             let res = b.set_wwan_enabled(enabled).await.map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::WwanEnabledSet(res)));
+                            let _ =
+                                tx.send(Message::BridgeResult(BridgeResult::WwanEnabledSet(res)));
                         });
                     }
                     BridgeCommand::SaveHostname { hostname } => {
@@ -341,7 +440,8 @@ impl BackendBridge {
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
                             let res = b.save_hostname(&hostname).await.map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::HostnameSaved(res)));
+                            let _ =
+                                tx.send(Message::BridgeResult(BridgeResult::HostnameSaved(res)));
                         });
                     }
 
@@ -350,20 +450,28 @@ impl BackendBridge {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.set_device_managed(&interface, managed)
+                            let res = b
+                                .set_device_managed(&interface, managed)
                                 .await
                                 .map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::DeviceManagedSet(res)));
+                            let _ =
+                                tx.send(Message::BridgeResult(BridgeResult::DeviceManagedSet(res)));
                         });
                     }
-                    BridgeCommand::SetDeviceAutoconnect { interface, autoconnect } => {
+                    BridgeCommand::SetDeviceAutoconnect {
+                        interface,
+                        autoconnect,
+                    } => {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.set_device_autoconnect(&interface, autoconnect)
+                            let res = b
+                                .set_device_autoconnect(&interface, autoconnect)
                                 .await
                                 .map_err(BridgeError::from);
-                            let _ = tx.send(Message::BridgeResult(BridgeResult::DeviceAutoconnectSet(res)));
+                            let _ = tx.send(Message::BridgeResult(
+                                BridgeResult::DeviceAutoconnectSet(res),
+                            ));
                         });
                     }
 
@@ -372,7 +480,10 @@ impl BackendBridge {
                         let b = backend.clone();
                         let tx = ui_tx.clone();
                         tokio::spawn(async move {
-                            let res = b.get_device_stats(&interface).await.map_err(BridgeError::from);
+                            let res = b
+                                .get_device_stats(&interface)
+                                .await
+                                .map_err(BridgeError::from);
                             let _ = tx.send(Message::BridgeResult(BridgeResult::DeviceStats(res)));
                         });
                     }
@@ -408,7 +519,9 @@ impl BackendBridge {
                                 Err(e) => {
                                     log::warn!("subscribe_device_events failed: {}", e);
                                     let _ = tx.send(Message::BridgeResult(
-                                        BridgeResult::DeviceEventsSubscribed(Err(BridgeError::from(e))),
+                                        BridgeResult::DeviceEventsSubscribed(Err(
+                                            BridgeError::from(e),
+                                        )),
                                     ));
                                 }
                             }
@@ -480,7 +593,9 @@ impl BackendBridge {
                                 Err(e) => {
                                     log::warn!("subscribe_profile_events failed: {}", e);
                                     let _ = tx.send(Message::BridgeResult(
-                                        BridgeResult::ProfileEventsSubscribed(Err(BridgeError::from(e))),
+                                        BridgeResult::ProfileEventsSubscribed(Err(
+                                            BridgeError::from(e),
+                                        )),
                                     ));
                                 }
                             }
@@ -516,7 +631,9 @@ impl BackendBridge {
                                 Err(e) => {
                                     log::warn!("subscribe_active_events failed: {}", e);
                                     let _ = tx.send(Message::BridgeResult(
-                                        BridgeResult::ActiveEventsSubscribed(Err(BridgeError::from(e))),
+                                        BridgeResult::ActiveEventsSubscribed(Err(
+                                            BridgeError::from(e),
+                                        )),
                                     ));
                                 }
                             }

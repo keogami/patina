@@ -37,14 +37,8 @@ pub trait NetworkManagerBackend: Clone + Send + Sync + 'static {
         uuid: &Uuid,
         interface: Option<&str>,
     ) -> impl Future<Output = Result<ActiveConnection>> + Send;
-    fn deactivate_connection(
-        &self,
-        active_id: &str,
-    ) -> impl Future<Output = Result<()>> + Send;
-    fn disconnect_device(
-        &self,
-        interface: &str,
-    ) -> impl Future<Output = Result<()>> + Send;
+    fn deactivate_connection(&self, active_id: &str) -> impl Future<Output = Result<()>> + Send;
+    fn disconnect_device(&self, interface: &str) -> impl Future<Output = Result<()>> + Send;
     fn add_and_activate_connection(
         &self,
         settings: &ConnectionSettings,
@@ -57,10 +51,7 @@ pub trait NetworkManagerBackend: Clone + Send + Sync + 'static {
     ) -> impl Future<Output = Result<Secrets>> + Send;
 
     // Configuration (CRUD)
-    fn get_settings(
-        &self,
-        uuid: &Uuid,
-    ) -> impl Future<Output = Result<ConnectionSettings>> + Send;
+    fn get_settings(&self, uuid: &Uuid) -> impl Future<Output = Result<ConnectionSettings>> + Send;
     fn update_connection(
         &self,
         uuid: &Uuid,
@@ -74,18 +65,9 @@ pub trait NetworkManagerBackend: Clone + Send + Sync + 'static {
 
     // Global State
     fn get_global_state(&self) -> impl Future<Output = Result<GlobalState>> + Send;
-    fn set_networking_enabled(
-        &self,
-        enabled: bool,
-    ) -> impl Future<Output = Result<()>> + Send;
-    fn set_wireless_enabled(
-        &self,
-        enabled: bool,
-    ) -> impl Future<Output = Result<()>> + Send;
-    fn set_wwan_enabled(
-        &self,
-        enabled: bool,
-    ) -> impl Future<Output = Result<()>> + Send;
+    fn set_networking_enabled(&self, enabled: bool) -> impl Future<Output = Result<()>> + Send;
+    fn set_wireless_enabled(&self, enabled: bool) -> impl Future<Output = Result<()>> + Send;
+    fn set_wwan_enabled(&self, enabled: bool) -> impl Future<Output = Result<()>> + Send;
     fn save_hostname(&self, hostname: &str) -> impl Future<Output = Result<()>> + Send;
 
     // Device Settings
@@ -101,10 +83,8 @@ pub trait NetworkManagerBackend: Clone + Send + Sync + 'static {
     ) -> impl Future<Output = Result<()>> + Send;
 
     // Monitoring
-    fn get_device_stats(
-        &self,
-        interface: &str,
-    ) -> impl Future<Output = Result<DeviceStats>> + Send;
+    fn get_device_stats(&self, interface: &str)
+    -> impl Future<Output = Result<DeviceStats>> + Send;
 
     // Subscriptions
     fn subscribe_device_events(

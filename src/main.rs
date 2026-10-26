@@ -81,11 +81,11 @@ fn main() -> anyhow::Result<()> {
     #[cfg(feature = "mock")]
     {
         let backend = MockBackend::new();
-        
+
         // Create message channel for UI
         let (message_tx, message_rx) = std::sync::mpsc::channel();
         let message_tx = std::sync::Arc::new(message_tx);
-        
+
         // Create rich context
         let rich_context = Arc::new(RichContext {
             log_file: context.log_file,
@@ -93,10 +93,10 @@ fn main() -> anyhow::Result<()> {
             message: message_tx.clone(),
             connection_maxitem: context.connection_maxitem,
         });
-        
+
         // Create backend bridge
         let bridge = Arc::new(BackendBridge::new(backend, (*message_tx).clone()));
-        
+
         // Create and run application
         let application = Application::new(rich_context, bridge, message_tx, message_rx);
         application.run()?;

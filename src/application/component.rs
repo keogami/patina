@@ -60,13 +60,27 @@ pub enum Message {
     BridgeResult(BridgeResult),
 
     // User intent variants (converted to BridgeCommands by Application)
-    RequestConnect { uuid: Uuid, interface: Option<String> },
-    RequestDisconnect { active_id: String },
-    RequestScan { interface: String },
+    RequestConnect {
+        uuid: Uuid,
+        interface: Option<String>,
+    },
+    RequestDisconnect {
+        active_id: String,
+    },
+    RequestScan {
+        interface: String,
+    },
     RequestDeviceList,
     RequestConnectionList,
-    AuthSubmitted { ssid: String, password: String, autoconnect: bool },
-    RequestAddAndActivate { settings: ConnectionSettings, interface: Option<String> },
+    AuthSubmitted {
+        ssid: String,
+        password: String,
+        autoconnect: bool,
+    },
+    RequestAddAndActivate {
+        settings: ConnectionSettings,
+        interface: Option<String>,
+    },
 }
 
 #[allow(clippy::large_enum_variant)]

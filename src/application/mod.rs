@@ -96,13 +96,13 @@ impl Application {
     /// runs the main loop for the application
     pub fn run(mut self) -> anyhow::Result<()> {
         self.setup_event_polling()?;
-        
+
         // Send initial startup commands
         self.bridge.send(BridgeCommand::GetAllDevices);
         self.bridge.send(BridgeCommand::ListConnections);
         self.bridge.send(BridgeCommand::GetActiveConnections);
         self.startup_pending = 3;
-        
+
         let rx = self.message_rx.take().unwrap();
 
         ratatui::run(|term| {
@@ -157,7 +157,11 @@ impl Application {
                 self.bridge.send(BridgeCommand::ListConnections);
                 return;
             }
-            Message::AuthSubmitted { ssid, password, autoconnect: _ } => {
+            Message::AuthSubmitted {
+                ssid,
+                password,
+                autoconnect: _,
+            } => {
                 self.bridge.send(BridgeCommand::AddAndActivateConnection {
                     settings: crate::backend::types::ConnectionSettings {
                         common: crate::backend::types::CommonSettings {
@@ -206,10 +210,14 @@ impl Application {
                     },
                     interface: None, // TODO: get from context
                 });
-                self.pane.update(&self.context, Message::FinishAuthentication);
+                self.pane
+                    .update(&self.context, Message::FinishAuthentication);
                 return;
             }
-            Message::RequestAddAndActivate { settings, interface } => {
+            Message::RequestAddAndActivate {
+                settings,
+                interface,
+            } => {
                 self.bridge.send(BridgeCommand::AddAndActivateConnection {
                     settings: settings.clone(),
                     interface: interface.clone(),
@@ -221,7 +229,7 @@ impl Application {
                 match result {
                     crate::backend::bridge::BridgeResult::AllDevices(Ok(devices)) => {
                         self.startup_pending = self.startup_pending.saturating_sub(1);
-                        
+
                         // Request access points from WiFi devices
                         for device in devices {
                             if matches!(device.device_type, crate::backend::DeviceType::Wifi) {
@@ -241,7 +249,10 @@ impl Application {
                     crate::backend::bridge::BridgeResult::AccessPoints(_) => {
                         self.startup_pending = self.startup_pending.saturating_sub(1);
                     }
-                    crate::backend::bridge::BridgeResult::ScanRequested { interface, result: Ok(()) } => {
+                    crate::backend::bridge::BridgeResult::ScanRequested {
+                        interface,
+                        result: Ok(()),
+                    } => {
                         // After scan completes, refresh AP list
                         self.bridge.send(BridgeCommand::GetAccessPoints {
                             interface: interface.clone(),
@@ -249,12 +260,12 @@ impl Application {
                     }
                     _ => {}
                 }
-                
+
                 // Check if startup is complete
                 if self.startup_pending == 0 {
                     let _ = self.context.message.send(Message::FinishLoading);
                 }
-                
+
                 // Forward to pane for UI updates
                 let bubble = self.pane.update(&self.context, ev);
                 if let Bubble::Yes(bubbled) = bubble {
@@ -264,7 +275,7 @@ impl Application {
             }
             _ => {}
         }
-        
+
         // Forward all other messages to the pane
         let bubble = self.pane.update(&self.context, ev);
         if let Bubble::Yes(bubbled) = bubble {

@@ -336,9 +336,17 @@ pub enum ConnectionTypeSettings {
 #[derive(Debug, Clone)]
 pub enum WifiSecuritySettings {
     None,
-    Wep { key: String },
-    WpaPsk { version: WpaVersion, password: String },
-    WpaEnterprise { version: WpaVersion, eap: EapSettings },
+    Wep {
+        key: String,
+    },
+    WpaPsk {
+        version: WpaVersion,
+        password: String,
+    },
+    WpaEnterprise {
+        version: WpaVersion,
+        eap: EapSettings,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -354,15 +362,23 @@ pub type Secrets = HashMap<String, String>;
 #[derive(Debug, Clone)]
 pub enum DeviceEvent {
     Added(Device),
-    Removed { interface: String },
+    Removed {
+        interface: String,
+    },
     StateChanged {
         interface: String,
         old: DeviceState,
         new: DeviceState,
         reason: DeviceStateReason,
     },
-    ManagedChanged { interface: String, managed: bool },
-    AutoconnectChanged { interface: String, autoconnect: bool },
+    ManagedChanged {
+        interface: String,
+        managed: bool,
+    },
+    AutoconnectChanged {
+        interface: String,
+        autoconnect: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
